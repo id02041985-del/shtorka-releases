@@ -1,9 +1,7 @@
 name: Public installed-upgrade verification
-run-name: ${{ github.event_name == 'repository_dispatch' && format('Drape {0} {1}', github.event.action == 'drape-draft-probe' && 'draft probe' || 'candidate', github.event.client_payload.nonce) || 'Public installed-upgrade rehearsal' }}
+run-name: ${{ format('Drape {0} {1}', github.event.action == 'drape-draft-probe' && 'draft probe' || 'candidate', github.event.client_payload.nonce) }}
 
 on:
-  push:
-    branches: [codex/public-windows-probe]
   repository_dispatch:
     types: [drape-candidate, drape-draft-probe]
 
@@ -12,21 +10,16 @@ permissions:
 
 jobs:
   verify:
-    if: github.repository == 'id02041985-del/shtorka-releases' && github.event.action != 'drape-draft-probe'
+    if: github.repository == 'id02041985-del/shtorka-releases' && github.event.action == 'drape-candidate'
     runs-on: windows-2022
     timeout-minutes: 35
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Check public 0.12.14 to 0.12.15 installed upgrade
-        if: github.event_name == 'push'
-        shell: powershell
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: ./.github/scripts/verify-upgrade.ps1 -Mode rehearsal -OldVersion 0.12.14 -NewVersion 0.12.15
       - name: Check unpublished candidate against previous public installer
-        if: github.event_name == 'repository_dispatch'
         shell: powershell
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -44,7 +37,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 5
     permissions:
-      contents: read
+      contents: write
     steps:
       - name: Verify authenticated draft download without publishing
         shell: powershell
