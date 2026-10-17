@@ -62,6 +62,8 @@ New-Item -Path $runKey -Force | Out-Null
 Set-ItemProperty -LiteralPath $runKey -Name 'Shtorka' -Value ('"' + $exe + '"')
 Remove-ItemProperty -LiteralPath $runKey -Name 'Drape' -ErrorAction SilentlyContinue
 $desktop = [Environment]::GetFolderPath('DesktopDirectory')
+if ([string]::IsNullOrWhiteSpace($desktop)) { throw 'Disposable runner has no user desktop path.' }
+New-Item -ItemType Directory -Path $desktop -Force | Out-Null
 $oldShortcut = Join-Path $desktop 'Шторка.lnk'
 $newShortcut = Join-Path $desktop 'Drape.lnk'
 $shell = New-Object -ComObject WScript.Shell
