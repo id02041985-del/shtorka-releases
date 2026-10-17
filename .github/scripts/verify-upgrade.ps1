@@ -66,11 +66,13 @@ if ([string]::IsNullOrWhiteSpace($desktop)) { throw 'Disposable runner has no us
 New-Item -ItemType Directory -Path $desktop -Force | Out-Null
 $oldShortcut = Join-Path $desktop 'Шторка.lnk'
 $newShortcut = Join-Path $desktop 'Drape.lnk'
+$tempShortcut = Join-Path $desktop 'shtorka-test-old.lnk'
 $shell = New-Object -ComObject WScript.Shell
-$link = $shell.CreateShortcut($oldShortcut)
+$link = $shell.CreateShortcut($tempShortcut)
 $link.TargetPath = $exe
 $link.WorkingDirectory = $appDir
 $link.Save()
+Move-Item -LiteralPath $tempShortcut -Destination $oldShortcut -Force
 $args = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOOFFICECOMPONENT=1','/UPDATE=1','/TASKS=desktopicon')
 $process = Start-Process -FilePath $newPath -ArgumentList $args -PassThru -WindowStyle Hidden
 if (!$process.WaitForExit(180000) -or $process.ExitCode -ne 0) { throw 'Candidate installer failed.' }

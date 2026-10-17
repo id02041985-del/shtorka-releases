@@ -1,8 +1,11 @@
-name: Public installed-upgrade rehearsal
+name: Public installed-upgrade verification
+run-name: ${{ github.event_name == 'repository_dispatch' && format('Drape candidate {0}', github.event.client_payload.nonce) || 'Public installed-upgrade rehearsal' }}
 
 on:
   push:
     branches: [codex/public-windows-probe]
+  repository_dispatch:
+    types: [drape-candidate]
 
 permissions:
   contents: read
@@ -17,8 +20,22 @@ jobs:
         with:
           persist-credentials: false
       - name: Check public 0.12.14 to 0.12.15 installed upgrade
+        if: github.event_name == 'push'
         shell: powershell
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: ./.github/scripts/verify-upgrade.ps1 -Mode rehearsal -OldVersion 0.12.14 -NewVersion 0.12.15
+      - name: Check unpublished candidate against previous public installer
+        if: github.event_name == 'repository_dispatch'
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          DRAPE_OLD: ${{ github.event.client_payload.oldVersion }}
+          DRAPE_NEW: ${{ github.event.client_payload.newVersion }}
+          DRAPE_SHA: ${{ github.event.client_payload.installerSha256 }}
+          DRAPE_BYTES: ${{ github.event.client_payload.installerBytes }}
+          DRAPE_SOURCE: ${{ github.event.client_payload.sourceSha }}
+        run: |
+          ./.github/scripts/verify-upgrade.ps1 -Mode candidate -OldVersion $env:DRAPE_OLD -NewVersion $env:DRAPE_NEW -ExpectedNewSha256 $env:DRAPE_SHA -ExpectedNewBytes ([long]$env:DRAPE_BYTES) -SourceSha $env:DRAPE_SOURCE
 
