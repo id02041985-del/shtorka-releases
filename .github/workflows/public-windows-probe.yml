@@ -1,0 +1,20 @@
+name: Public Windows runner availability probe
+
+on:
+  push:
+    branches: [codex/public-windows-probe]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    if: github.repository == 'id02041985-del/shtorka-releases'
+    runs-on: windows-2022
+    timeout-minutes: 5
+    steps:
+      - name: Confirm isolated GitHub-hosted Windows job
+        shell: pwsh
+        run: |
+          if ($env:RUNNER_ENVIRONMENT -cne 'github-hosted') { throw 'Unexpected runner.' }
+          Write-Host 'Public Windows verification runner started without private source or release credentials.'
