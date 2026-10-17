@@ -18,7 +18,16 @@ function Get-Release([string]$version) {
     Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/tags/v$version" -Headers $headers -TimeoutSec 60
 }
 function Get-Installer([string]$version,[bool]$requirePublished,[string]$path) {
-    $release = Get-Release $version
+    if ($requirePublished) {
+        $release = Get-Release $version
+    } else {
+        $draftJson = & gh release view "v$version" --repo $repo --json databaseId,isDraft,tagName
+        if ($LASTEXITCODE -ne 0) { throw 'Candidate draft could not be resolved.' }
+        $draftInfo = $draftJson | ConvertFrom-Json
+        if (!$draftInfo.isDraft -or $draftInfo.tagName -cne "v$version" -or $draftInfo.databaseId -le 0) { throw 'Candidate draft identity mismatch.' }
+        $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'X-GitHub-Api-Version' = '2022-11-28' }
+        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/$($draftInfo.databaseId)" -Headers $headers -TimeoutSec 60
+    }
     if ($release.tag_name -cne "v$version" -or ($requirePublished -and $release.draft)) { throw 'Unexpected release identity or draft status.' }
     $name = "Shtorka-$version-Setup-x64.exe"
     $asset = @($release.assets | Where-Object name -CEQ $name)
