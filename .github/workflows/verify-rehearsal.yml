@@ -1,0 +1,22 @@
+name: Public installed-upgrade rehearsal
+
+on:
+  push:
+    branches: [codex/public-windows-probe]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.repository == 'id02041985-del/shtorka-releases'
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Check public 0.12.14 to 0.12.15 installed upgrade
+        shell: powershell
+        run: ./.github/scripts/verify-upgrade.ps1 -Mode rehearsal -OldVersion 0.12.14 -NewVersion 0.12.15
+
