@@ -1,4 +1,4 @@
-param(
+﻿param(
     [ValidateSet('rehearsal','candidate')][string]$Mode,
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$OldVersion,
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$NewVersion,
