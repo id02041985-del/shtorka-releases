@@ -136,7 +136,11 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
             if ($reason -ceq 'Exception') {
                 $passed = @($results | Where-Object { $_.pass -eq $true })
                 $last = if ($passed.Count -gt 0) { [string]$passed[-1].name } else { 'no completed check' }
-                $reason = "Exception after $last ($($results.Count) results)"
+                $detail = [string]$failed[0].detail
+                $detail = $detail -replace '(?i)[a-z]:\\[^\s;]+', '[path]' -replace '(?i)https?://\S+', '[url]'
+                $detail = $detail -replace '(?i)(Bearer|Authorization|Token)\S*', '[redacted]' -replace '[\r\n]', ' '
+                if ($detail.Length -gt 100) { $detail = $detail.Substring(0, 100) }
+                $reason = "Exception after $last ($($results.Count) results): $detail"
             }
             throw "Installed rail startup or glyph check failed: $argument; $reason"
         }
