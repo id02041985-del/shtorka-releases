@@ -119,7 +119,7 @@ if ($ordinary[0].HasExited -or (Test-Path -LiteralPath (Join-Path $profile 'erro
 }
 $exitRequest = Start-Process -FilePath $exe -ArgumentList '--exit' -PassThru -Wait
 if ($exitRequest.ExitCode -ne 0 -or !$ordinary[0].WaitForExit(15000)) { throw 'Disposable ordinary application did not exit cleanly.' }
-function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expectedChecks) {
+function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expectedChecks,[int]$maximumChecks = $expectedChecks) {
     $report = Join-Path $profile $reportName
     $process = Start-Process -FilePath $exe -ArgumentList @($argument,'--data-dir',('"'+$profile+'"')) -PassThru
     try {
@@ -131,8 +131,8 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
         $results = ConvertFrom-Json -InputObject (Get-Content -LiteralPath $report -Raw)
         if ($results -isnot [array]) { $results = @($results) }
         $failed = @($results | Where-Object { $_.pass -ne $true })
-        if ($results.Count -ne $expectedChecks -or $failed.Count -ne 0) {
-            $reason = if ($failed.Count -ne 0) { [string]$failed[0].name } else { "Expected $expectedChecks checks, got $($results.Count)" }
+        if ($results.Count -lt $expectedChecks -or $results.Count -gt $maximumChecks -or $failed.Count -ne 0) {
+            $reason = if ($failed.Count -ne 0) { [string]$failed[0].name } else { "Expected $expectedChecks..$maximumChecks checks, got $($results.Count)" }
             throw "Installed rail startup or glyph check failed: $argument; $reason"
         }
     } finally {
@@ -141,6 +141,7 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
 }
 Verify-InstalledRail '--verify-utility-startup' 'utility-startup.json' 13
 Verify-InstalledRail '--verify-utility-startup-restart' 'utility-startup-restart.json' 8
+Verify-InstalledRail '--verify-program-operations' 'program-operations.json' 11 12
 if (Test-Path -LiteralPath (Join-Path $profile 'error.log')) { throw 'Installed application logged a startup error.' }
 "Installed upgrade $OldVersion -> $NewVersion passed on public GitHub-hosted Windows runner. Candidate SHA256: $($new.Sha256). Source: $SourceSha" |
     Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
