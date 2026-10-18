@@ -148,9 +148,63 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
         if (!$process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
     }
 }
+
+function Get-DisposableHostCrashState([string]$installedExe) {
+    $fixture = $null
+    $hostProcess = $null
+    $folder = Join-Path ([IO.Path]::GetTempPath()) ('drape-host-probe-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $folder -Force | Out-Null
+    $journal = Join-Path $folder 'window.json'
+    $ready = Join-Path $folder 'attached.ready'
+    try {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class DrapeHostProbe {
+    [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern IntPtr GetDesktopWindow();
+}
+'@
+        $fixture = Start-Process -FilePath $installedExe -ArgumentList '--program-test-window' -PassThru
+        $window = [IntPtr]::Zero
+        for ($i = 0; $i -lt 100 -and $window -eq [IntPtr]::Zero -and !$fixture.HasExited; $i++) {
+            Start-Sleep -Milliseconds 100
+            $fixture.Refresh()
+            $window = $fixture.MainWindowHandle
+        }
+        if ($window -eq [IntPtr]::Zero) { return 'fixture_window_missing' }
+        $arguments = @('--program-holder-crash', [string]$window.ToInt64(), ('"' + $journal + '"'), ('"' + $ready + '"'))
+        $hostProcess = Start-Process -FilePath $installedExe -ArgumentList $arguments -PassThru
+        for ($i = 0; $i -lt 100 -and !(Test-Path -LiteralPath $ready) -and !$hostProcess.HasExited; $i++) {
+            Start-Sleep -Milliseconds 100
+        }
+        if (!(Test-Path -LiteralPath $ready)) { return 'host_attach_failed' }
+        $hostWindow = [DrapeHostProbe]::GetParent($window)
+        Stop-Process -Id $hostProcess.Id -Force
+        $null = $hostProcess.WaitForExit(10000)
+        Start-Sleep -Milliseconds 300
+        $alive = [DrapeHostProbe]::IsWindow($window)
+        $after = if ($alive) { [DrapeHostProbe]::GetParent($window) } else { [IntPtr]::Zero }
+        $parentKind = if (!$alive) { 'no_target' } elseif ($after -eq [IntPtr]::Zero) { 'none' }
+            elseif ($after -eq [DrapeHostProbe]::GetDesktopWindow()) { 'desktop' }
+            elseif ($after -eq $hostWindow) { 'old_host' } else { 'other' }
+        return "targetAlive=$alive;processAlive=$(!$fixture.HasExited);parent=$parentKind;hostWindowAlive=$([DrapeHostProbe]::IsWindow($hostWindow));journalExists=$(Test-Path -LiteralPath $journal)"
+    } catch {
+        return ('probe_error=' + $_.Exception.GetType().Name)
+    } finally {
+        if ($hostProcess -and !$hostProcess.HasExited) { Stop-Process -Id $hostProcess.Id -Force -ErrorAction SilentlyContinue }
+        if ($fixture -and !$fixture.HasExited) { Stop-Process -Id $fixture.Id -Force -ErrorAction SilentlyContinue }
+    }
+}
 Verify-InstalledRail '--verify-utility-startup' 'utility-startup.json' 13
 Verify-InstalledRail '--verify-utility-startup-restart' 'utility-startup-restart.json' 8
-Verify-InstalledRail '--verify-program-operations' 'program-operations.json' 20 21
+try { Verify-InstalledRail '--verify-program-operations' 'program-operations.json' 20 21 }
+catch {
+    $state = Get-DisposableHostCrashState $exe
+    Write-Host ('::error title=Disposable host crash state::' + $state)
+    throw
+}
 if (Test-Path -LiteralPath (Join-Path $profile 'error.log')) { throw 'Installed application logged a startup error.' }
 "Installed upgrade $OldVersion -> $NewVersion passed on public GitHub-hosted Windows runner. Candidate SHA256: $($new.Sha256). Source: $SourceSha" |
     Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
