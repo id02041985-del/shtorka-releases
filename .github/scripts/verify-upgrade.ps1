@@ -126,7 +126,10 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
         if (!$process.WaitForExit(60000)) { throw "Installed application startup timed out: $argument" }
         if ($process.ExitCode -ne 0) { throw "Installed application exited with code $($process.ExitCode): $argument" }
         if (!(Test-Path -LiteralPath $report)) { throw "Installed application did not complete $argument" }
-        $results = @(Get-Content -LiteralPath $report -Raw | ConvertFrom-Json)
+        # ConvertFrom-Json can return the root JSON array as one pipeline item
+        # on Windows PowerShell. Assign first, then enumerate its elements.
+        $results = ConvertFrom-Json -InputObject (Get-Content -LiteralPath $report -Raw)
+        if ($results -isnot [array]) { $results = @($results) }
         $failed = @($results | Where-Object { $_.pass -ne $true })
         if ($results.Count -ne $expectedChecks -or $failed.Count -ne 0) {
             $reason = if ($failed.Count -ne 0) { [string]$failed[0].name } else { "Expected $expectedChecks checks, got $($results.Count)" }
