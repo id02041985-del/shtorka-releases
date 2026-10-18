@@ -127,8 +127,10 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
         if ($process.ExitCode -ne 0) { throw "Installed application exited with code $($process.ExitCode): $argument" }
         if (!(Test-Path -LiteralPath $report)) { throw "Installed application did not complete $argument" }
         $results = @(Get-Content -LiteralPath $report -Raw | ConvertFrom-Json)
-        if ($results.Count -ne $expectedChecks -or @($results | Where-Object { $_.pass -ne $true }).Count -ne 0) {
-            throw "Installed rail startup or glyph check failed: $argument"
+        $failed = @($results | Where-Object { $_.pass -ne $true })
+        if ($results.Count -ne $expectedChecks -or $failed.Count -ne 0) {
+            $reason = if ($failed.Count -ne 0) { [string]$failed[0].name } else { "Expected $expectedChecks checks, got $($results.Count)" }
+            throw "Installed rail startup or glyph check failed: $argument; $reason"
         }
     } finally {
         if (!$process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
