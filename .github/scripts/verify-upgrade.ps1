@@ -141,7 +141,7 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
 }
 Verify-InstalledRail '--verify-utility-startup' 'utility-startup.json' 13
 Verify-InstalledRail '--verify-utility-startup-restart' 'utility-startup-restart.json' 8
-Verify-InstalledRail '--verify-program-operations' 'program-operations.json' 11 12
+Verify-InstalledRail '--verify-program-operations' 'program-operations.json' 15 16
 if (Test-Path -LiteralPath (Join-Path $profile 'error.log')) { throw 'Installed application logged a startup error.' }
 "Installed upgrade $OldVersion -> $NewVersion passed on public GitHub-hosted Windows runner. Candidate SHA256: $($new.Sha256). Source: $SourceSha" |
     Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
