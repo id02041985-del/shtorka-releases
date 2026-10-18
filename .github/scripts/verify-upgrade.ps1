@@ -133,6 +133,11 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
         $failed = @($results | Where-Object { $_.pass -ne $true })
         if ($results.Count -lt $expectedChecks -or $results.Count -gt $maximumChecks -or $failed.Count -ne 0) {
             $reason = if ($failed.Count -ne 0) { [string]$failed[0].name } else { "Expected $expectedChecks..$maximumChecks checks, got $($results.Count)" }
+            if ($reason -ceq 'Exception') {
+                $passed = @($results | Where-Object { $_.pass -eq $true })
+                $last = if ($passed.Count -gt 0) { [string]$passed[-1].name } else { 'no completed check' }
+                $reason = "Exception after $last ($($results.Count) results)"
+            }
             throw "Installed rail startup or glyph check failed: $argument; $reason"
         }
     } finally {
