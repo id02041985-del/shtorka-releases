@@ -66,6 +66,15 @@ $profile = Join-Path $env:LOCALAPPDATA 'Shtorka'
 New-Item -ItemType Directory -Path $profile -Force | Out-Null
 $sentinel = Join-Path $profile 'upgrade-sentinel.txt'
 [IO.File]::WriteAllText($sentinel, 'disposable upgrade sentinel')
+# Keep an ordinary nonempty profile across the installer upgrade, then use it
+# for the installed binary's actual rail startup and appearance checks.
+$settings = Join-Path $profile 'settings.json'
+@{
+    Version = 1
+    Sites = @(@{ Name='Fixture site'; Url='https://example.com/' })
+    Programs = @(@{ Kind='EXE'; Name='Fixture program'; Path=(Join-Path $env:WINDIR 'System32\notepad.exe'); Mode='DIRECT' })
+    Appearance = @{ IconSize=20; RailWidth=36; Opacity=1 }
+} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $settings -Encoding UTF8
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 New-Item -Path $runKey -Force | Out-Null
 Set-ItemProperty -LiteralPath $runKey -Name 'Shtorka' -Value ('"' + $exe + '"')
@@ -94,6 +103,40 @@ if ((Get-ItemProperty -LiteralPath $runKey -Name 'Drape' -ErrorAction SilentlyCo
     (Get-ItemProperty -LiteralPath $runKey -Name 'Shtorka' -ErrorAction SilentlyContinue)) { throw 'Autostart migration failed.' }
 if (Test-Path -LiteralPath $oldShortcut) { throw 'Old shortcut remained.' }
 if (!(Test-Path -LiteralPath $newShortcut) -or $shell.CreateShortcut($newShortcut).TargetPath -ine $exe) { throw 'New shortcut missing or misdirected.' }
+# /UPDATE=1 starts the ordinary installed app. Prove it stays up with the
+# existing profile before closing it in this disposable runner for glyph tests.
+$startupDeadline = (Get-Date).AddSeconds(20)
+$ordinary = @()
+do {
+    $ordinary = @(Get-Process Shtorka -ErrorAction SilentlyContinue | Where-Object { $_.Path -ieq $exe })
+    if ($ordinary.Count -gt 0) { break }
+    Start-Sleep -Milliseconds 500
+} while ((Get-Date) -lt $startupDeadline)
+if ($ordinary.Count -ne 1) { throw 'Ordinary installed application did not start after upgrade.' }
+Start-Sleep -Seconds 3
+if ($ordinary[0].HasExited -or (Test-Path -LiteralPath (Join-Path $profile 'error.log'))) {
+    throw 'Ordinary installed application failed during startup.'
+}
+$exitRequest = Start-Process -FilePath $exe -ArgumentList '--exit' -PassThru -Wait
+if ($exitRequest.ExitCode -ne 0 -or !$ordinary[0].WaitForExit(15000)) { throw 'Disposable ordinary application did not exit cleanly.' }
+function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expectedChecks) {
+    $report = Join-Path $profile $reportName
+    $process = Start-Process -FilePath $exe -ArgumentList @($argument,'--data-dir',('"'+$profile+'"')) -PassThru
+    try {
+        if (!$process.WaitForExit(60000)) { throw "Installed application startup timed out: $argument" }
+        if ($process.ExitCode -ne 0) { throw "Installed application exited with code $($process.ExitCode): $argument" }
+        if (!(Test-Path -LiteralPath $report)) { throw "Installed application did not complete $argument" }
+        $results = @(Get-Content -LiteralPath $report -Raw | ConvertFrom-Json)
+        if ($results.Count -ne $expectedChecks -or @($results | Where-Object { $_.pass -ne $true }).Count -ne 0) {
+            throw "Installed rail startup or glyph check failed: $argument"
+        }
+    } finally {
+        if (!$process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+    }
+}
+Verify-InstalledRail '--verify-utility-startup' 'utility-startup.json' 13
+Verify-InstalledRail '--verify-utility-startup-restart' 'utility-startup-restart.json' 8
+if (Test-Path -LiteralPath (Join-Path $profile 'error.log')) { throw 'Installed application logged a startup error.' }
 "Installed upgrade $OldVersion -> $NewVersion passed on public GitHub-hosted Windows runner. Candidate SHA256: $($new.Sha256). Source: $SourceSha" |
     Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
