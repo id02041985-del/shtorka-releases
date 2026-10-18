@@ -121,7 +121,7 @@ $exitRequest = Start-Process -FilePath $exe -ArgumentList '--exit' -PassThru -Wa
 if ($exitRequest.ExitCode -ne 0 -or !$ordinary[0].WaitForExit(15000)) { throw 'Disposable ordinary application did not exit cleanly.' }
 function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expectedChecks,[int]$maximumChecks = $expectedChecks) {
     $report = Join-Path $profile $reportName
-    $process = Start-Process -FilePath $exe -ArgumentList @($argument,'--data-dir',('"'+$profile+'"')) -PassThru
+    $process = Start-Process -FilePath $exe -WorkingDirectory $appDir -ArgumentList @($argument,'--data-dir',('"'+$profile+'"')) -PassThru
     try {
         if (!$process.WaitForExit(60000)) { throw "Installed application startup timed out: $argument" }
         if ($process.ExitCode -ne 0) { throw "Installed application exited with code $($process.ExitCode): $argument" }
@@ -151,7 +151,7 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
 
 Verify-InstalledRail '--verify-utility-startup' 'utility-startup.json' 13
 Verify-InstalledRail '--verify-utility-startup-restart' 'utility-startup-restart.json' 8
-Verify-InstalledRail '--verify-program-operations' 'program-operations.json' 13 14
+Verify-InstalledRail '--verify-program-operations' 'program-operations.json' 16 17
 if (Test-Path -LiteralPath (Join-Path $profile 'error.log')) { throw 'Installed application logged a startup error.' }
 "Installed upgrade $OldVersion -> $NewVersion passed on public GitHub-hosted Windows runner. Candidate SHA256: $($new.Sha256). Source: $SourceSha" |
     Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
