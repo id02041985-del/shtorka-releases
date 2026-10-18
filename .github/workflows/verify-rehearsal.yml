@@ -30,7 +30,16 @@ jobs:
           DRAPE_BYTES: ${{ github.event.client_payload.installerBytes }}
           DRAPE_SOURCE: ${{ github.event.client_payload.sourceSha }}
         run: |
-          ./.github/scripts/verify-upgrade.ps1 -Mode candidate -OldVersion $env:DRAPE_OLD -NewVersion $env:DRAPE_NEW -ExpectedNewSha256 $env:DRAPE_SHA -ExpectedNewBytes ([long]$env:DRAPE_BYTES) -SourceSha $env:DRAPE_SOURCE
+          $ErrorActionPreference = 'Stop'
+          try {
+            ./.github/scripts/verify-upgrade.ps1 -Mode candidate -OldVersion $env:DRAPE_OLD -NewVersion $env:DRAPE_NEW -ExpectedNewSha256 $env:DRAPE_SHA -ExpectedNewBytes ([long]$env:DRAPE_BYTES) -SourceSha $env:DRAPE_SOURCE
+          } catch {
+            $reason = $_.Exception.Message -replace 'https?://\S+', '[URL]' -replace '(?i)(Bearer|Authorization|Token)\S*', '[redacted]'
+            $reason = $reason -replace '%', '%25' -replace "`r", '%0D' -replace "`n", '%0A'
+            if ($reason.Length -gt 240) { $reason = $reason.Substring(0, 240) }
+            Write-Host ('::error title=Candidate verification failure::' + $reason)
+            throw 'Candidate verification failed; draft remains unpublished.'
+          }
 
   probe-draft:
     if: github.repository == 'id02041985-del/shtorka-releases' && github.event.action == 'drape-draft-probe'
