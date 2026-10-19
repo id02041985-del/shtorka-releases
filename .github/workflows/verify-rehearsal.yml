@@ -94,12 +94,15 @@ jobs:
           DRAPE_SOURCE: ${{ github.event.client_payload.sourceSha }}
         run: |
           $ErrorActionPreference = 'Stop'
+          $stage = 'identity'
+          try {
           if ($env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:DRAPE_NONCE -notmatch '^[a-f0-9]{32}$' -or
               $env:DRAPE_SHA -notmatch '^[a-f0-9]{64}$' -or $env:DRAPE_SOURCE -notmatch '^[a-f0-9]{40}$') {
             throw 'Invalid isolated overlay candidate identity.'
           }
           $repo = 'id02041985-del/shtorka-releases'
           $tag = "drape-overlay-test-$env:DRAPE_NONCE"
+          $stage = 'draft lookup'
           $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
           $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases?per_page=100" -Headers $headers -TimeoutSec 60
           $matches = @($releases | Where-Object tag_name -CEQ $tag)
@@ -109,6 +112,7 @@ jobs:
           $root = Join-Path $env:RUNNER_TEMP 'drape-overlay-check'
           New-Item -ItemType Directory -Path $root -Force | Out-Null
           $zip = Join-Path $root 'drape-overlay-payload.zip'
+          $stage = 'candidate download'
           for ($attempt = 1; $attempt -le 3; $attempt++) {
             & gh release download $tag --repo $repo --pattern drape-overlay-payload.zip --dir $root --clobber
             if ($LASTEXITCODE -eq 0 -and (Test-Path $zip) -and
@@ -119,27 +123,40 @@ jobs:
             Start-Sleep -Seconds 10
           }
           $app = Join-Path $root 'app'
+          $stage = 'candidate extraction'
           Expand-Archive -LiteralPath $zip -DestinationPath $app
           $exe = Join-Path $app 'Shtorka.exe'
           if (!(Test-Path $exe)) { throw 'Candidate executable missing.' }
           $profile = Join-Path $root 'synthetic-profile'
-          $process = Start-Process -FilePath $exe -ArgumentList @('--verify-program-operations', '--data-dir', ('"' + $profile + '"')) -PassThru
+          $stage = 'installed app startup'
+          $process = Start-Process -FilePath $exe -WorkingDirectory $app -ArgumentList @('--verify-program-operations', '--data-dir', ('"' + $profile + '"')) -PassThru
           try {
             $deadline = (Get-Date).AddMinutes(10)
             while (!$process.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2; $process.Refresh() }
             if (!$process.HasExited) { throw 'Candidate desktop check timed out.' }
-            if ($process.ExitCode -ne 0) { throw "Candidate desktop process exited $($process.ExitCode)." }
             $report = Join-Path $profile 'program-operations.json'
             if (!(Test-Path $report)) { throw 'Candidate desktop report missing.' }
+            $stage = 'program operations'
             $checks = @(Get-Content $report -Raw | ConvertFrom-Json)
             $fail = @($checks | Where-Object { !$_.pass })
-            if ($checks.Count -lt 25 -or $fail.Count -gt 0) {
+            if ($process.ExitCode -ne 0 -or $checks.Count -lt 25 -or $fail.Count -gt 0) {
               $names = ($fail | Select-Object -ExpandProperty name) -join ', '
-              throw "Candidate UI checks failed: $names; count $($checks.Count)."
+              throw "Candidate UI checks failed: $names; count $($checks.Count); exit $($process.ExitCode)."
             }
             "Exact source $env:DRAPE_SOURCE; $($checks.Count) disposable Windows operations passed, including overlay crash recovery." |
               Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           } finally {
             if (!$process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+          }
+          } catch {
+            # This annotation is visible through the Checks API when hosted runner logs are unavailable.
+            # Only fixed stage labels and fixture check names are exposed, never raw child stderr.
+            $reason = $_.Exception.GetType().Name
+            if ($stage -eq 'program operations' -and $null -ne $fail -and $fail.Count -gt 0) {
+              $names = (($fail | Select-Object -ExpandProperty name) -join ', ') -replace '[^a-zA-Z0-9 ,.-]', ''
+              $reason = 'failed fixture checks: ' + $names.Substring(0, [Math]::Min(180, $names.Length))
+            }
+            Write-Host "::error title=Overlay UI test::$stage; $reason"
+            throw
           }
 
