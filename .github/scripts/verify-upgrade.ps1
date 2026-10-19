@@ -13,21 +13,30 @@ if ($env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:GITHUB_REPOSITORY -cne
 $repo = 'id02041985-del/shtorka-releases'
 $work = Join-Path $env:RUNNER_TEMP 'drape-upgrade'
 New-Item -ItemType Directory -Path $work -Force | Out-Null
+# Retry only read operations. Every completed installer is still checked against
+# the exact asset size/digest and candidate dispatch before it can be executed.
+function Invoke-ReadRetry([string]$stage, [scriptblock]$read) {
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try { return (& $read) }
+        catch {
+            $status = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
+            if ($_.Exception.Data['NoRetry'] -or $attempt -eq 3 -or ($status -ge 400 -and $status -lt 500 -and $status -notin @(408,429))) {
+                throw "$stage failed after $attempt read attempt(s); HTTP status $status. No installer was executed."
+            }
+            Write-Host "$stage read interrupted (attempt $attempt/3); retrying."
+            Start-Sleep -Seconds (3 * $attempt)
+        }
+    }
+}
 function Get-Release([string]$version) {
     $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'X-GitHub-Api-Version' = '2022-11-28' }
-    Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/tags/v$version" -Headers $headers -TimeoutSec 60
+    Invoke-ReadRetry 'Release metadata' {
+        Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/tags/v$version" -Headers $headers -TimeoutSec 60
+    }
 }
 function Get-Installer([string]$version,[bool]$requirePublished,[string]$path) {
-    if ($requirePublished) {
-        $release = Get-Release $version
-    } else {
-        $draftJson = & gh release view "v$version" --repo $repo --json databaseId,isDraft,tagName
-        if ($LASTEXITCODE -ne 0) { throw 'Candidate draft could not be resolved.' }
-        $draftInfo = $draftJson | ConvertFrom-Json
-        if (!$draftInfo.isDraft -or $draftInfo.tagName -cne "v$version" -or $draftInfo.databaseId -le 0) { throw 'Candidate draft identity mismatch.' }
-        $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'X-GitHub-Api-Version' = '2022-11-28' }
-        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/$($draftInfo.databaseId)" -Headers $headers -TimeoutSec 60
-    }
+    $release = Get-Release $version
+    if (!$requirePublished -and (!$release.draft -or $release.id -le 0)) { throw 'Candidate draft identity mismatch.' }
     if ($release.tag_name -cne "v$version" -or ($requirePublished -and $release.draft)) { throw 'Unexpected release identity or draft status.' }
     $name = "Shtorka-$version-Setup-x64.exe"
     $asset = @($release.assets | Where-Object name -CEQ $name)
@@ -35,34 +44,50 @@ function Get-Installer([string]$version,[bool]$requirePublished,[string]$path) {
     if ($release.draft) {
         if ($Mode -ne 'candidate') { throw 'Draft only allowed for candidate check.' }
         if (!(Get-Command gh -ErrorAction SilentlyContinue)) { throw 'GitHub CLI unavailable.' }
-        & gh release download "v$version" --repo $repo --pattern $name --dir $work
-        if ($LASTEXITCODE -ne 0) { throw 'Draft installer download failed.' }
+        Invoke-ReadRetry 'Candidate installer download' {
+            Remove-Item -LiteralPath (Join-Path $work $name) -Force -ErrorAction SilentlyContinue
+            $nativeOutput = & gh release download "v$version" --repo $repo --pattern $name --dir $work --clobber 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                $failure = [InvalidOperationException]::new('Candidate installer read failed.')
+                if (($nativeOutput -join ' ') -match 'HTTP (401|403|404)') { $failure.Data['NoRetry'] = $true }
+                throw $failure
+            }
+        }
         Move-Item -LiteralPath (Join-Path $work $name) -Destination $path -Force
     } else {
-        Invoke-WebRequest -Uri $asset[0].browser_download_url -OutFile $path -TimeoutSec 600
+        Invoke-ReadRetry 'Published installer download' {
+            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+            Invoke-WebRequest -Uri $asset[0].browser_download_url -OutFile $path -TimeoutSec 600
+        }
     }
     $sha = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
     if ((Get-Item -LiteralPath $path).Length -ne $asset[0].size -or $sha -cne $asset[0].digest.Substring(7).ToLowerInvariant()) { throw 'Downloaded installer differs from release asset.' }
     return @{ Version=$version; Sha256=$sha; Bytes=[long]$asset[0].size; Draft=[bool]$release.draft }
 }
 function Get-CandidateBridgeCrx([string]$version) {
-    $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'X-GitHub-Api-Version' = '2022-11-28' }
-    $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases?per_page=100" -Headers $headers -TimeoutSec 60
-    $draft = @($releases | Where-Object tag_name -CEQ "v$version")
-    if ($draft.Count -ne 1 -or !$draft[0].draft -or $draft[0].id -le 0) { throw 'Candidate bridge draft missing.' }
-    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/$($draft[0].id)" -Headers $headers -TimeoutSec 60
+    $release = Get-Release $version
+    if ($release.tag_name -cne "v$version" -or !$release.draft -or $release.id -le 0) { throw 'Candidate bridge draft missing.' }
     $asset = @($release.assets | Where-Object name -CEQ 'Obyezd.crx')
     if ($asset.Count -ne 1 -or $asset[0].size -le 1000 -or
         $asset[0].digest -notmatch '^sha256:[a-fA-F0-9]{64}$') { throw 'Signed bridge fixture metadata missing.' }
     $path = Join-Path $work 'Obyezd.crx'
-    & gh release download "v$version" --repo $repo --pattern Obyezd.crx --dir $work --clobber
-    if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $path) -or
+    Invoke-ReadRetry 'Candidate bridge download' {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        $nativeOutput = & gh release download "v$version" --repo $repo --pattern Obyezd.crx --dir $work --clobber 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            $failure = [InvalidOperationException]::new('Candidate bridge read failed.')
+            if (($nativeOutput -join ' ') -match 'HTTP (401|403|404)') { $failure.Data['NoRetry'] = $true }
+            throw $failure
+        }
+    }
+    if (!(Test-Path -LiteralPath $path) -or
         (Get-Item -LiteralPath $path).Length -ne $asset[0].size -or
         (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ine $asset[0].digest.Substring(7)) {
         throw 'Downloaded signed bridge fixture differs from unpublished asset.'
     }
     return $path
 }
+& (Join-Path $PSScriptRoot 'verify-download-retry.ps1')
 $oldPath = Join-Path $work 'old.exe'
 $newPath = Join-Path $work 'new.exe'
 $old = Get-Installer $OldVersion $true $oldPath
