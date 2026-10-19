@@ -72,6 +72,14 @@ if ($Mode -eq 'candidate') {
         $new.Sha256 -cne $ExpectedNewSha256.ToLowerInvariant() -or $new.Bytes -ne $ExpectedNewBytes -or
         $SourceSha -notmatch '^[a-fA-F0-9]{40}$') { throw 'Candidate dispatch and draft asset mismatch.' }
 }
+$drawerRelease = [version]$NewVersion -ge [version]'0.12.22'
+$bridgeCrx = if ($Mode -eq 'candidate') { Get-CandidateBridgeCrx $NewVersion } else { $null }
+# All private draft downloads are complete. Neither the ordinary app started
+# by the installer nor any foreign desktop fixture may inherit workflow tokens.
+foreach ($name in @('GH_TOKEN','GITHUB_TOKEN','ACTIONS_RUNTIME_TOKEN','ACTIONS_ID_TOKEN_REQUEST_TOKEN')) {
+    Remove-Item "Env:$name" -ErrorAction SilentlyContinue
+}
+if ($drawerRelease) { & (Join-Path $PSScriptRoot 'prepare-chatgpt-fixture.ps1') }
 $args = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOOFFICECOMPONENT=1','/TASKS=desktopicon')
 $process = Start-Process -FilePath $oldPath -ArgumentList $args -PassThru -WindowStyle Hidden
 if (!$process.WaitForExit(180000) -or $process.ExitCode -ne 0) { throw 'Previous installer failed.' }
@@ -137,11 +145,12 @@ if ($ordinary[0].HasExited -or (Test-Path -LiteralPath (Join-Path $profile 'erro
 }
 $exitRequest = Start-Process -FilePath $exe -ArgumentList '--exit' -PassThru -Wait
 if ($exitRequest.ExitCode -ne 0 -or !$ordinary[0].WaitForExit(15000)) { throw 'Disposable ordinary application did not exit cleanly.' }
-function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expectedChecks,[int]$maximumChecks = $expectedChecks) {
+function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expectedChecks,[int]$maximumChecks = $expectedChecks,
+    [int]$timeoutMs = 60000,[string[]]$requiredChecks = @()) {
     $report = Join-Path $profile $reportName
     $process = Start-Process -FilePath $exe -WorkingDirectory $appDir -ArgumentList @($argument,'--data-dir',('"'+$profile+'"')) -PassThru
     try {
-        if (!$process.WaitForExit(60000)) { throw "Installed application startup timed out: $argument" }
+        if (!$process.WaitForExit($timeoutMs)) { throw "Installed application startup timed out: $argument" }
         if ($process.ExitCode -ne 0) { throw "Installed application exited with code $($process.ExitCode): $argument" }
         if (!(Test-Path -LiteralPath $report)) { throw "Installed application did not complete $argument" }
         # ConvertFrom-Json can return the root JSON array as one pipeline item
@@ -154,14 +163,19 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
             if ($reason -ceq 'Exception') {
                 $passed = @($results | Where-Object { $_.pass -eq $true })
                 $last = if ($passed.Count -gt 0) { [string]$passed[-1].name } else { 'no completed check' }
-                $detail = [string]$failed[0].detail
-                $detail = $detail -replace '(?i)[a-z]:\\[^\s;]+', '[path]' -replace '(?i)https?://\S+', '[url]'
-                $detail = $detail -replace '(?i)(Bearer|Authorization|Token)\S*', '[redacted]' -replace '[\r\n]', ' '
-                if ($detail.Length -gt 100) { $detail = $detail.Substring(0, 100) }
-                $reason = "Exception after $last ($($results.Count) results): $detail"
+                $code = [string]$failed[0].reason
+                if ($code -cnotmatch '^[A-Z_]{1,40}$') { $code = 'UNCLASSIFIED' }
+                $reason = "Exception after $last ($($results.Count) results): $code"
             }
             throw "Installed rail startup or glyph check failed: $argument; $reason"
         }
+        foreach ($required in $requiredChecks) {
+            if (@($results | Where-Object { $_.pass -and $_.name -ceq $required }).Count -ne 1) {
+                throw "Installed payload proof missing: $required"
+            }
+        }
+        "$argument passed $($results.Count) checks in the final installed payload." |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
     } finally {
         if (!$process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
     }
@@ -170,12 +184,21 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
 Verify-InstalledRail '--verify-utility-startup' 'utility-startup.json' 13
 Verify-InstalledRail '--verify-utility-startup-restart' 'utility-startup-restart.json' 8
 if ($Mode -eq 'candidate') {
-    $bridgeCrx = Get-CandidateBridgeCrx $NewVersion
     $env:SHTORKA_OBYEZD_TEST_PACKAGES = Split-Path $bridgeCrx -Parent
     try { Verify-InstalledRail '--verify-obyezd-bridge' 'obyezd-bridge-checks.json' 4 }
     finally { Remove-Item Env:SHTORKA_OBYEZD_TEST_PACKAGES -ErrorAction SilentlyContinue }
 }
-Verify-InstalledRail '--verify-program-operations' 'program-operations.json' 12 13
+if ($drawerRelease) {
+    Verify-InstalledRail '--verify-program-overlay' 'program-overlay.json' 40 100 600000 @(
+        'A real click on the ordinary Programs action opens the existing application in the shared drawer',
+        'Closing and reopening the drawer preserves the same modal Save dialog',
+        'Real input reaches the different-DPI program window in the shared drawer',
+        'Destroying the drawer owner restores the ordinary application window with unsaved text',
+        'Installed ChatGPT MSIX restores its ordinary window without changing its account or network mode'
+    )
+} else {
+    Verify-InstalledRail '--verify-program-operations' 'program-operations.json' 12 13
+}
 if (Test-Path -LiteralPath (Join-Path $profile 'error.log')) { throw 'Installed application logged a startup error.' }
 "Installed upgrade $OldVersion -> $NewVersion passed on public GitHub-hosted Windows runner. Candidate SHA256: $($new.Sha256). Source: $SourceSha" |
     Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
