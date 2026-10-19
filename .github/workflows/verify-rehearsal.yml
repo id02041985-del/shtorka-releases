@@ -211,8 +211,12 @@ jobs:
               if ($exceptionCheck.Count -eq 1 -and [string]$exceptionCheck[0].detail -match '^([A-Za-z0-9]+Exception):') {
                 $kind = $Matches[1]
               }
+              $inputReason = if ($exceptionCheck.Count -eq 1 -and [string]$exceptionCheck[0].reason -cin
+                @('EDIT_BOUNDS', 'POINTER_POSITION', 'POINTER_OCCLUDED', 'POINTER_FOCUS', 'WHEEL_NO_SCROLL')) {
+                [string]$exceptionCheck[0].reason
+              } else { '' }
               $reason = "checks=$($checks.Count); exit=$($process.ExitCode); failed=" +
-                $names.Substring(0, [Math]::Min(100, $names.Length)) + '; kind=' + $kind + '; after=' +
+                $names.Substring(0, [Math]::Min(100, $names.Length)) + '; kind=' + $kind + '; input=' + $inputReason + '; after=' +
                 $last.Substring(0, [Math]::Min(120, $last.Length))
             }
             Write-Host "::error title=Overlay UI test::$stage; $reason"
