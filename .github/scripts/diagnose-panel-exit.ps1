@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][Diagnostics.Process]$Panel, [Parameter(Mandatory)][string]$ExpectedExe)
+param([Parameter(Mandatory)][Diagnostics.Process]$Panel, [Parameter(Mandatory)][string]$ExpectedExe, [string]$ReportPath)
 $ErrorActionPreference = 'Stop'
 if ($env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:GITHUB_REPOSITORY -cne 'id02041985-del/shtorka-releases') {
     throw 'Panel diagnostics require the disposable public Windows runner.'
@@ -31,6 +31,9 @@ try {
         'Shtorka\.Ui\.(Error|Ask)' = 'APP_DIALOG'
         'System\.Windows\.MessageBox\.' = 'WPF_MESSAGEBOX'
         'Shtorka\.RailWindow.*OpenPinnedProgram' = 'APP_PIN_OPEN'
+        'Shtorka\.DrawerWindow.*InitializeProgramContent' = 'APP_PROGRAM_MONITOR'
+        'Shtorka\.DrawerWindow' = 'APP_DRAWER'
+        'Shtorka\.App.*RunApp' = 'APP_RUN_CALLBACK'
         'Shtorka\.RailWindow.*Exit' = 'APP_EXIT'
         'Shtorka\.ProgramOverlayHost' = 'APP_WINDOW_BROKER'
         'Shtorka\.ProgramLauncher.*Focus' = 'APP_PROGRAM_FOCUS'
@@ -57,6 +60,19 @@ try {
                 Write-Host ('Panel managed frame category ' + $category); $lines++; $seen[$category] = $true
             }
         }
+    }
+    if ($ReportPath) {
+        $errorLog = Join-Path (Split-Path $ReportPath -Parent) 'error.log'
+        if (Test-Path -LiteralPath $errorLog) {
+            $errorText = [IO.File]::ReadAllText($errorLog)
+            Write-Host 'Synthetic panel error log is present.'
+            foreach ($kind in @('NullReferenceException','InvalidOperationException','TaskCanceledException','ObjectDisposedException','COMException')) {
+                if ($errorText.Contains($kind)) { Write-Host ('Synthetic panel exception category ' + $kind) }
+            }
+            foreach ($pattern in $categories.Keys) {
+                if ($errorText -match $pattern) { Write-Host ('Synthetic panel error frame category ' + $categories[$pattern]) }
+            }
+        } else { Write-Host 'Synthetic panel error log is absent.' }
     }
     Write-Host 'Panel managed wait classification completed; raw data is not published.'
 } catch { Write-Host 'Panel managed wait classification unavailable; original failed exit gate is retained.' }

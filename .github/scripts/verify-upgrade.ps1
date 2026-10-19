@@ -219,7 +219,7 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
                         Write-Host "Panel thread $($thread.Id): $state / $waitReason."
                     }
                 } catch { Write-Host 'Panel exit thread snapshot unavailable.' }
-                & (Join-Path $PSScriptRoot 'diagnose-panel-exit.ps1') -Panel $process -ExpectedExe $exe
+                & (Join-Path $PSScriptRoot 'diagnose-panel-exit.ps1') -Panel $process -ExpectedExe $exe -ReportPath $report
             }
             $reason = if ($failed.Count -ne 0) { [string]$failed[0].name } else { "Expected $expectedChecks..$maximumChecks checks, got $($results.Count)" }
             if ($reason -ceq 'Exception' -or !$completed) {
@@ -257,13 +257,17 @@ if ($Mode -eq 'candidate') {
     finally { Remove-Item Env:SHTORKA_OBYEZD_TEST_PACKAGES -ErrorAction SilentlyContinue }
 }
 if ($drawerRelease) {
-    Verify-InstalledRail '--verify-program-overlay' 'program-overlay.json' 40 100 600000 @(
-        'A real click on the ordinary Programs action opens the existing application in the shared drawer',
-        'Closing and reopening the drawer preserves the same modal Save dialog',
-        'Real input reaches the different-DPI program window in the shared drawer',
-        'Destroying the drawer owner restores the ordinary application window with unsaved text',
-        'Installed ChatGPT MSIX restores its ordinary window without changing its account or network mode'
-    )
+    $cycles = if ([version]$NewVersion -ge [version]'0.12.23') { 3 } else { 1 }
+    for ($cycle = 1; $cycle -le $cycles; $cycle++) {
+        Verify-InstalledRail '--verify-program-overlay' 'program-overlay.json' 40 100 600000 @(
+            'A real click on the ordinary Programs action opens the existing application in the shared drawer',
+            'Closing and reopening the drawer preserves the same modal Save dialog',
+            'Real input reaches the different-DPI program window in the shared drawer',
+            'Destroying the drawer owner restores the ordinary application window with unsaved text',
+            'Installed ChatGPT MSIX restores its ordinary window without changing its account or network mode'
+        )
+        Write-Host "Installed program lifecycle cycle $cycle/$cycles passed with normal panel exit0."
+    }
 } else {
     Verify-InstalledRail '--verify-program-operations' 'program-operations.json' 12 13
 }
