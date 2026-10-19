@@ -150,22 +150,21 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
     $report = Join-Path $profile $reportName
     $process = Start-Process -FilePath $exe -WorkingDirectory $appDir -ArgumentList @($argument,'--data-dir',('"'+$profile+'"')) -PassThru
     try {
-        if (!$process.WaitForExit($timeoutMs)) { throw "Installed application startup timed out: $argument" }
-        if ($process.ExitCode -ne 0) { throw "Installed application exited with code $($process.ExitCode): $argument" }
+        $completed = $process.WaitForExit($timeoutMs)
         if (!(Test-Path -LiteralPath $report)) { throw "Installed application did not complete $argument" }
         # ConvertFrom-Json can return the root JSON array as one pipeline item
         # on Windows PowerShell. Assign first, then enumerate its elements.
         $results = ConvertFrom-Json -InputObject (Get-Content -LiteralPath $report -Raw)
         if ($results -isnot [array]) { $results = @($results) }
         $failed = @($results | Where-Object { $_.pass -ne $true })
-        if ($results.Count -lt $expectedChecks -or $results.Count -gt $maximumChecks -or $failed.Count -ne 0) {
+        if (!$completed -or $process.ExitCode -ne 0 -or $results.Count -lt $expectedChecks -or $results.Count -gt $maximumChecks -or $failed.Count -ne 0) {
             $reason = if ($failed.Count -ne 0) { [string]$failed[0].name } else { "Expected $expectedChecks..$maximumChecks checks, got $($results.Count)" }
-            if ($reason -ceq 'Exception') {
+            if ($reason -ceq 'Exception' -or !$completed) {
                 $passed = @($results | Where-Object { $_.pass -eq $true })
                 $last = if ($passed.Count -gt 0) { [string]$passed[-1].name } else { 'no completed check' }
-                $code = [string]$failed[0].reason
+                $code = if ($failed.Count) { [string]$failed[0].reason } else { 'DESKTOP_TIMEOUT' }
                 if ($code -cnotmatch '^[A-Z_]{1,40}$') { $code = 'UNCLASSIFIED' }
-                $reason = "Exception after $last ($($results.Count) results): $code"
+                $reason = "Stopped after $last ($($results.Count) results): $code"
             }
             throw "Installed rail startup or glyph check failed: $argument; $reason"
         }

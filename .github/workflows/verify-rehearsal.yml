@@ -183,7 +183,7 @@ jobs:
           try {
             $deadline = (Get-Date).AddMinutes(10)
             while (!$process.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2; $process.Refresh() }
-            if (!$process.HasExited) { throw 'Candidate desktop check timed out.' }
+            $desktopCompleted = $process.HasExited
             $report = Join-Path $profile 'program-overlay.json'
             if (!(Test-Path $report)) { throw 'Candidate desktop report missing.' }
             $stage = 'report parsing'
@@ -199,7 +199,7 @@ jobs:
             $stage = 'program operations'
             $sharedProof = @($checks | Where-Object { $_.pass -and $_.name -ceq 'Destroying the drawer owner restores the ordinary application window with unsaved text' })
             $msixProof = @($checks | Where-Object { $_.pass -and $_.name -ceq 'Installed ChatGPT MSIX restores its ordinary window without changing its account or network mode' })
-            if ($process.ExitCode -ne 0 -or $checks.Count -lt 30 -or $fail.Count -gt 0 -or $sharedProof.Count -ne 1) {
+            if (!$desktopCompleted -or $process.ExitCode -ne 0 -or $checks.Count -lt 30 -or $fail.Count -gt 0 -or $sharedProof.Count -ne 1) {
               $names = ($fail | Select-Object -ExpandProperty name) -join ', '
               throw "Candidate UI checks failed: $names; count $($checks.Count); exit $($process.ExitCode)."
             }
