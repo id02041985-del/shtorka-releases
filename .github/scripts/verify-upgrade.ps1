@@ -217,6 +217,9 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
                     foreach ($marker in @($results | Where-Object { $_.name -cmatch '^Panel UI thread ID [0-9]+$' })) {
                         Write-Host ([string]$marker.name)
                     }
+                    foreach ($marker in @($results | Where-Object { $_.name -cmatch '^(Warning dialog starting category (OTHER|PROGRAM_MONITOR|PIN_OPEN|SETTINGS_SAVE|PROGRAM_LIST)|Unhandled dispatcher error dialog starting)$' })) {
+                        Write-Host ([string]$marker.name)
+                    }
                     foreach ($thread in @($process.Threads | Select-Object -First 32)) {
                         $state = [string]$thread.ThreadState
                         $waitReason = if ($state -ceq 'Wait') { [string]$thread.WaitReason } else { 'NotWaiting' }
