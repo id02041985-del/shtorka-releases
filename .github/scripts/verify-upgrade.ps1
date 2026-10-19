@@ -45,6 +45,24 @@ function Get-Installer([string]$version,[bool]$requirePublished,[string]$path) {
     if ((Get-Item -LiteralPath $path).Length -ne $asset[0].size -or $sha -cne $asset[0].digest.Substring(7).ToLowerInvariant()) { throw 'Downloaded installer differs from release asset.' }
     return @{ Version=$version; Sha256=$sha; Bytes=[long]$asset[0].size; Draft=[bool]$release.draft }
 }
+function Get-CandidateBridgeCrx([string]$version) {
+    $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'X-GitHub-Api-Version' = '2022-11-28' }
+    $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases?per_page=100" -Headers $headers -TimeoutSec 60
+    $draft = @($releases | Where-Object tag_name -CEQ "v$version")
+    if ($draft.Count -ne 1 -or !$draft[0].draft -or $draft[0].id -le 0) { throw 'Candidate bridge draft missing.' }
+    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/$($draft[0].id)" -Headers $headers -TimeoutSec 60
+    $asset = @($release.assets | Where-Object name -CEQ 'Obyezd.crx')
+    if ($asset.Count -ne 1 -or $asset[0].size -le 1000 -or
+        $asset[0].digest -notmatch '^sha256:[a-fA-F0-9]{64}$') { throw 'Signed bridge fixture metadata missing.' }
+    $path = Join-Path $work 'Obyezd.crx'
+    & gh release download "v$version" --repo $repo --pattern Obyezd.crx --dir $work --clobber
+    if ($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $path) -or
+        (Get-Item -LiteralPath $path).Length -ne $asset[0].size -or
+        (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ine $asset[0].digest.Substring(7)) {
+        throw 'Downloaded signed bridge fixture differs from unpublished asset.'
+    }
+    return $path
+}
 $oldPath = Join-Path $work 'old.exe'
 $newPath = Join-Path $work 'new.exe'
 $old = Get-Installer $OldVersion $true $oldPath
@@ -151,6 +169,12 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
 
 Verify-InstalledRail '--verify-utility-startup' 'utility-startup.json' 13
 Verify-InstalledRail '--verify-utility-startup-restart' 'utility-startup-restart.json' 8
+if ($Mode -eq 'candidate') {
+    $bridgeCrx = Get-CandidateBridgeCrx $NewVersion
+    $env:SHTORKA_OBYEZD_TEST_PACKAGES = Split-Path $bridgeCrx -Parent
+    try { Verify-InstalledRail '--verify-obyezd-bridge' 'obyezd-bridge-checks.json' 4 }
+    finally { Remove-Item Env:SHTORKA_OBYEZD_TEST_PACKAGES -ErrorAction SilentlyContinue }
+}
 Verify-InstalledRail '--verify-program-operations' 'program-operations.json' 16 17
 if (Test-Path -LiteralPath (Join-Path $profile 'error.log')) { throw 'Installed application logged a startup error.' }
 "Installed upgrade $OldVersion -> $NewVersion passed on public GitHub-hosted Windows runner. Candidate SHA256: $($new.Sha256). Source: $SourceSha" |
