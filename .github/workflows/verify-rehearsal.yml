@@ -137,8 +137,15 @@ jobs:
             $report = Join-Path $profile 'program-operations.json'
             if (!(Test-Path $report)) { throw 'Candidate desktop report missing.' }
             $stage = 'report parsing'
-            $checks = @(Get-Content $report -Raw | ConvertFrom-Json)
-            $fail = @($checks | Where-Object { !$_.pass })
+            # Windows PowerShell 5.1 may emit the JSON array as one pipeline object.
+            # Enumerate the parsed value explicitly before counting fixture checks.
+            $parsed = ConvertFrom-Json -InputObject (Get-Content $report -Raw)
+            $checks = New-Object 'System.Collections.Generic.List[object]'
+            $fail = New-Object 'System.Collections.Generic.List[object]'
+            foreach ($check in $parsed) {
+              $checks.Add($check)
+              if (!$check.pass) { $fail.Add($check) }
+            }
             $stage = 'program operations'
             if ($process.ExitCode -ne 0 -or $checks.Count -lt 25 -or $fail.Count -gt 0) {
               $names = ($fail | Select-Object -ExpandProperty name) -join ', '
