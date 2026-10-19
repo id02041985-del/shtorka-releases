@@ -28,14 +28,22 @@ function Invoke-ReadRetry([string]$stage, [scriptblock]$read) {
         }
     }
 }
-function Get-Release([string]$version) {
+function Get-Release([string]$version, [bool]$draft = $false) {
     $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; 'X-GitHub-Api-Version' = '2022-11-28' }
-    Invoke-ReadRetry 'Release metadata' {
-        Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/tags/v$version" -Headers $headers -TimeoutSec 60
-    }
+    if ($draft) {
+        # The tags endpoint returns 404 for unpublished releases. Resolve only
+        # this exact draft from the authenticated list, then fetch its exact ID.
+        $releases = Invoke-ReadRetry 'Draft release list' {
+            Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases?per_page=100" -Headers $headers -TimeoutSec 60
+        }
+        $matches = @($releases | Where-Object { $_.tag_name -ceq "v$version" })
+        if ($matches.Count -ne 1 -or !$matches[0].draft -or $matches[0].id -le 0) { throw 'Candidate draft identity missing.' }
+        $url = "https://api.github.com/repos/$repo/releases/$($matches[0].id)"
+    } else { $url = "https://api.github.com/repos/$repo/releases/tags/v$version" }
+    Invoke-ReadRetry 'Release metadata' { Invoke-RestMethod -Uri $url -Headers $headers -TimeoutSec 60 }
 }
 function Get-Installer([string]$version,[bool]$requirePublished,[string]$path) {
-    $release = Get-Release $version
+    $release = Get-Release $version (!$requirePublished)
     if (!$requirePublished -and (!$release.draft -or $release.id -le 0)) { throw 'Candidate draft identity mismatch.' }
     if ($release.tag_name -cne "v$version" -or ($requirePublished -and $release.draft)) { throw 'Unexpected release identity or draft status.' }
     $name = "Shtorka-$version-Setup-x64.exe"
@@ -65,7 +73,7 @@ function Get-Installer([string]$version,[bool]$requirePublished,[string]$path) {
     return @{ Version=$version; Sha256=$sha; Bytes=[long]$asset[0].size; Draft=[bool]$release.draft }
 }
 function Get-CandidateBridgeCrx([string]$version) {
-    $release = Get-Release $version
+    $release = Get-Release $version $true
     if ($release.tag_name -cne "v$version" -or !$release.draft -or $release.id -le 0) { throw 'Candidate bridge draft missing.' }
     $asset = @($release.assets | Where-Object name -CEQ 'Obyezd.crx')
     if ($asset.Count -ne 1 -or $asset[0].size -le 1000 -or
