@@ -127,6 +127,22 @@ jobs:
           Expand-Archive -LiteralPath $zip -DestinationPath $app
           $exe = Join-Path $app 'Shtorka.exe'
           if (!(Test-Path $exe)) { throw 'Candidate executable missing.' }
+          $stage = 'cross-process parent crash safety'
+          $crashRoot = Join-Path $root 'synthetic-parent-crash'
+          $probe = Start-Process -FilePath $exe -WorkingDirectory $app -ArgumentList @('--verify-program-parent-crash', ('"' + $crashRoot + '"')) -PassThru
+          try {
+            if (!$probe.WaitForExit(30000) -or $probe.ExitCode -ne 0) { throw 'Synthetic parent crash probe did not complete.' }
+            $crashReport = Join-Path $crashRoot 'program-parent-crash.json'
+            if (!(Test-Path $crashReport)) { throw 'Synthetic parent crash report missing.' }
+            $crash = ConvertFrom-Json -InputObject (Get-Content $crashReport -Raw)
+            if (!$crash.parentKilled) { throw 'Synthetic parent process did not stop.' }
+            if (!$crash.windowSurvived -or !$crash.restoredTopLevel) {
+              Write-Host '::error title=Program window safety::Synthetic application window did not survive its cross-process parent crash.'
+              throw 'Cross-process parent crash destroys or strands the application window.'
+            }
+          } finally {
+            if (!$probe.HasExited) { Stop-Process -Id $probe.Id -Force -ErrorAction SilentlyContinue }
+          }
           $profile = Join-Path $root 'synthetic-profile'
           $stage = 'installed app startup'
           $process = Start-Process -FilePath $exe -WorkingDirectory $app -ArgumentList @('--verify-program-operations', '--data-dir', ('"' + $profile + '"')) -PassThru
