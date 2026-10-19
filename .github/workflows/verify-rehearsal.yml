@@ -231,12 +231,14 @@ jobs:
                 $kind = $Matches[1]
               }
               $inputReason = if ($exceptionCheck.Count -eq 1 -and [string]$exceptionCheck[0].reason -cin
-                @('EDIT_BOUNDS', 'POINTER_POSITION', 'POINTER_OCCLUDED', 'POINTER_FOCUS', 'WHEEL_NO_SCROLL')) {
+                @('EDIT_BOUNDS', 'POINTER_POSITION', 'POINTER_OCCLUDED', 'POINTER_FOCUS', 'WHEEL_NO_SCROLL',
+                  'DRAWER_ANCHOR', 'WINDOW_MISSING', 'WINDOW_ID_CHANGED', 'MINIMUM_WIDTH', 'FOCUS_REJECTED', 'RESTORATION_PENDING', 'LAYOUT_UNCONFIRMED',
+                  'MSIX_ACTIVATION_REJECTED', 'MSIX_WINDOW_TIMEOUT', 'MSIX_LAYOUT_TIMEOUT', 'MSIX_AUTOMATION_TIMEOUT', 'DRAWER_WAIT_TIMEOUT')) {
                 [string]$exceptionCheck[0].reason
               } else { '' }
               $reason = "checks=$($checks.Count); exit=$($process.ExitCode); failed=" +
-                $names.Substring(0, [Math]::Min(100, $names.Length)) + '; kind=' + $kind + '; input=' + $inputReason + '; after=' +
-                $last.Substring(0, [Math]::Min(120, $last.Length))
+                $names.Substring(0, [Math]::Min(100, $names.Length)) + '; kind=' + $kind + '; diagnostic=' + $inputReason + '; after=' +
+                $last.Substring(0, [Math]::Min(180, $last.Length))
             }
             Write-Host "::error title=Overlay UI test::$stage; $reason"
             throw
