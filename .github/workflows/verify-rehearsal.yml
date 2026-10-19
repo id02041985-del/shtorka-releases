@@ -165,12 +165,12 @@ jobs:
           }
           $profile = Join-Path $root 'synthetic-profile'
           $stage = 'installed app startup'
-          $process = Start-Process -FilePath $exe -WorkingDirectory $app -ArgumentList @('--verify-program-operations', '--data-dir', ('"' + $profile + '"')) -PassThru
+          $process = Start-Process -FilePath $exe -WorkingDirectory $app -ArgumentList @('--verify-program-overlay', '--data-dir', ('"' + $profile + '"')) -PassThru
           try {
             $deadline = (Get-Date).AddMinutes(10)
             while (!$process.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2; $process.Refresh() }
             if (!$process.HasExited) { throw 'Candidate desktop check timed out.' }
-            $report = Join-Path $profile 'program-operations.json'
+            $report = Join-Path $profile 'program-overlay.json'
             if (!(Test-Path $report)) { throw 'Candidate desktop report missing.' }
             $stage = 'report parsing'
             # Windows PowerShell 5.1 may emit the JSON array as one pipeline object.

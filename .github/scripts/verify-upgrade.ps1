@@ -175,7 +175,7 @@ if ($Mode -eq 'candidate') {
     try { Verify-InstalledRail '--verify-obyezd-bridge' 'obyezd-bridge-checks.json' 4 }
     finally { Remove-Item Env:SHTORKA_OBYEZD_TEST_PACKAGES -ErrorAction SilentlyContinue }
 }
-Verify-InstalledRail '--verify-program-operations' 'program-operations.json' 16 17
+Verify-InstalledRail '--verify-program-operations' 'program-operations.json' 12 13
 if (Test-Path -LiteralPath (Join-Path $profile 'error.log')) { throw 'Installed application logged a startup error.' }
 "Installed upgrade $OldVersion -> $NewVersion passed on public GitHub-hosted Windows runner. Candidate SHA256: $($new.Sha256). Source: $SourceSha" |
     Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
