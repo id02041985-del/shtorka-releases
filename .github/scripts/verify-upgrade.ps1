@@ -217,7 +217,7 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
                     foreach ($marker in @($results | Where-Object { $_.name -cmatch '^Panel UI thread ID [0-9]+$' })) {
                         Write-Host ([string]$marker.name)
                     }
-                    foreach ($marker in @($results | Where-Object { $_.name -cmatch '^(Warning dialog starting category (OTHER|PROGRAM_MONITOR|PIN_OPEN|SETTINGS_SAVE|PROGRAM_LIST)|Unhandled dispatcher error dialog starting)$' })) {
+                    foreach ($marker in @($results | Where-Object { $_.name -cmatch '^(Warning dialog (starting|completed) category (OTHER|PROGRAM_MONITOR|PIN_OPEN|SETTINGS_SAVE|PROGRAM_LIST)|Unhandled dispatcher error dialog starting|Program list open failed code [A-Z_]{1,40})$' })) {
                         Write-Host ([string]$marker.name)
                     }
                     foreach ($thread in @($process.Threads | Select-Object -First 32)) {
