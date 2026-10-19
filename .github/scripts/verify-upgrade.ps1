@@ -181,6 +181,8 @@ if ($exitRequest.ExitCode -ne 0 -or !$ordinary[0].WaitForExit(15000)) { throw 'D
 function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expectedChecks,[int]$maximumChecks = $expectedChecks,
     [int]$timeoutMs = 60000,[string[]]$requiredChecks = @()) {
     $report = Join-Path $profile $reportName
+    # A new process must produce its own proof, especially across stress cycles.
+    Remove-Item -LiteralPath $report -Force -ErrorAction SilentlyContinue
     $process = Start-Process -FilePath $exe -WorkingDirectory $appDir -ArgumentList @($argument,'--data-dir',('"'+$profile+'"')) -PassThru
     try {
         $deadline = (Get-Date).AddMilliseconds($timeoutMs)
@@ -197,7 +199,9 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
             }
         } while ((Get-Date) -lt $deadline -and (!$cleanupDeadline -or (Get-Date) -lt $cleanupDeadline))
         $completed = $process.HasExited
-        if (!(Test-Path -LiteralPath $report)) { throw "Installed application did not complete $argument" }
+        if (!(Test-Path -LiteralPath $report) -or (Get-Item -LiteralPath $report).LastWriteTimeUtc -lt $process.StartTime.ToUniversalTime()) {
+            throw "Installed application did not produce a fresh report for $argument"
+        }
         # ConvertFrom-Json can return the root JSON array as one pipeline item
         # on Windows PowerShell. Assign first, then enumerate its elements.
         $results = ConvertFrom-Json -InputObject (Get-Content -LiteralPath $report -Raw)
