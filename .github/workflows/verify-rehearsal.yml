@@ -136,9 +136,10 @@ jobs:
             if (!$process.HasExited) { throw 'Candidate desktop check timed out.' }
             $report = Join-Path $profile 'program-operations.json'
             if (!(Test-Path $report)) { throw 'Candidate desktop report missing.' }
-            $stage = 'program operations'
+            $stage = 'report parsing'
             $checks = @(Get-Content $report -Raw | ConvertFrom-Json)
             $fail = @($checks | Where-Object { !$_.pass })
+            $stage = 'program operations'
             if ($process.ExitCode -ne 0 -or $checks.Count -lt 25 -or $fail.Count -gt 0) {
               $names = ($fail | Select-Object -ExpandProperty name) -join ', '
               throw "Candidate UI checks failed: $names; count $($checks.Count); exit $($process.ExitCode)."
@@ -152,9 +153,10 @@ jobs:
             # This annotation is visible through the Checks API when hosted runner logs are unavailable.
             # Only fixed stage labels and fixture check names are exposed, never raw child stderr.
             $reason = $_.Exception.GetType().Name
-            if ($stage -eq 'program operations' -and $null -ne $fail -and $fail.Count -gt 0) {
+            if ($stage -eq 'program operations') {
               $names = (($fail | Select-Object -ExpandProperty name) -join ', ') -replace '[^a-zA-Z0-9 ,.-]', ''
-              $reason = 'failed fixture checks: ' + $names.Substring(0, [Math]::Min(180, $names.Length))
+              $reason = "checks=$($checks.Count); exit=$($process.ExitCode); failed=" +
+                $names.Substring(0, [Math]::Min(180, $names.Length))
             }
             Write-Host "::error title=Overlay UI test::$stage; $reason"
             throw
