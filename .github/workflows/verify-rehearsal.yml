@@ -81,10 +81,13 @@ jobs:
   overlay-ui:
     if: github.repository == 'id02041985-del/shtorka-releases' && github.event.action == 'drape-overlay-test'
     runs-on: windows-2022
-    timeout-minutes: 20
+    timeout-minutes: 35
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
       - name: Test exact unpublished portable candidate on disposable Windows desktop
         shell: powershell
         env:
@@ -92,6 +95,7 @@ jobs:
           DRAPE_NONCE: ${{ github.event.client_payload.nonce }}
           DRAPE_SHA: ${{ github.event.client_payload.sha256 }}
           DRAPE_SOURCE: ${{ github.event.client_payload.sourceSha }}
+          DRAPE_MSIX_TEST: ${{ github.event.client_payload.msixTest }}
         run: |
           $ErrorActionPreference = 'Stop'
           $stage = 'identity'
@@ -127,6 +131,15 @@ jobs:
           Expand-Archive -LiteralPath $zip -DestinationPath $app
           $exe = Join-Path $app 'Shtorka.exe'
           if (!(Test-Path $exe)) { throw 'Candidate executable missing.' }
+          # Downloads are complete. Desktop applications must not inherit the
+          # workflow's temporary GitHub/artifact tokens.
+          foreach ($name in @('GH_TOKEN', 'GITHUB_TOKEN', 'ACTIONS_RUNTIME_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN')) {
+            Remove-Item "Env:$name" -ErrorAction SilentlyContinue
+          }
+          if ($env:DRAPE_MSIX_TEST -ceq 'true') {
+            $stage = 'official ChatGPT MSIX preparation'
+            & './.github/scripts/prepare-chatgpt-fixture.ps1'
+          }
           $stage = 'signed extension bridge'
           $env:SHTORKA_OBYEZD_TEST_PACKAGES = $app
           $bridgeRoot = Join-Path $root 'synthetic-obyezd-bridge'
@@ -185,10 +198,12 @@ jobs:
             }
             $stage = 'program operations'
             $sharedProof = @($checks | Where-Object { $_.pass -and $_.name -ceq 'Destroying the drawer owner restores the ordinary application window with unsaved text' })
+            $msixProof = @($checks | Where-Object { $_.pass -and $_.name -ceq 'Installed ChatGPT MSIX restores its ordinary window without changing its account or network mode' })
             if ($process.ExitCode -ne 0 -or $checks.Count -lt 30 -or $fail.Count -gt 0 -or $sharedProof.Count -ne 1) {
               $names = ($fail | Select-Object -ExpandProperty name) -join ', '
               throw "Candidate UI checks failed: $names; count $($checks.Count); exit $($process.ExitCode)."
             }
+            if ($env:DRAPE_MSIX_TEST -ceq 'true' -and $msixProof.Count -ne 1) { throw 'Installed ChatGPT MSIX proof missing.' }
             "Exact source $env:DRAPE_SOURCE; $($checks.Count) disposable Windows operations passed, including shared drawer input, site/program switching and crash recovery." |
               Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           } finally {
@@ -198,6 +213,9 @@ jobs:
             # This annotation is visible through the Checks API when hosted runner logs are unavailable.
             # Only fixed stage labels and fixture check names are exposed, never raw child stderr.
             $reason = $_.Exception.GetType().Name
+            if ($stage -eq 'official ChatGPT MSIX preparation' -and $_.Exception.Message -cmatch '^CHATGPT_[A-Z0-9_.]{1,180}$') {
+              $reason = $_.Exception.Message
+            }
             if ($stage -eq 'signed extension bridge' -and $null -ne $bridgeChecks) {
               $bridgeFailures = @($bridgeChecks | Where-Object { !$_.pass })
               $names = (($bridgeFailures | Select-Object -ExpandProperty name) -join ', ') -replace '[^a-zA-Z0-9 ,.-]', ''
