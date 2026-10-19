@@ -53,5 +53,6 @@ $start = @(Get-StartApps | Where-Object AppID -CLike 'OpenAI.Codex_2p2nqsd0c76g0
 if ($start.Count -ne 1) { throw 'CHATGPT_FIXTURE_AUMID_AMBIGUOUS' }
 $env:SHTORKA_CHATGPT_AUMID = [string]$start[0].AppID
 $digest = (Get-FileHash $package -Algorithm SHA256).Hash.ToLowerInvariant()
+Write-Host "::notice title=Official ChatGPT MSIX::Version $($installed[0].Version); SHA256 $digest; bytes $((Get-Item $package).Length)."
 "Official Store-signed ChatGPT MSIX installed only in disposable VM. Version $($installed[0].Version); SHA256 $digest. No account login or microphone use." |
     Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
