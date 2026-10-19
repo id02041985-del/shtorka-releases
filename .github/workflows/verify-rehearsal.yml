@@ -183,7 +183,8 @@ jobs:
           try {
             $deadline = (Get-Date).AddMinutes(10)
             while (!$process.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2; $process.Refresh() }
-            if (!$process.HasExited) { throw 'Candidate desktop check timed out.' }
+            $desktopCompleted = $process.HasExited
+            $desktopExit = if ($desktopCompleted) { $process.ExitCode } else { -999 }
             $report = Join-Path $profile 'program-overlay.json'
             if (!(Test-Path $report)) { throw 'Candidate desktop report missing.' }
             $stage = 'report parsing'
@@ -199,9 +200,9 @@ jobs:
             $stage = 'program operations'
             $sharedProof = @($checks | Where-Object { $_.pass -and $_.name -ceq 'Destroying the drawer owner restores the ordinary application window with unsaved text' })
             $msixProof = @($checks | Where-Object { $_.pass -and $_.name -ceq 'Installed ChatGPT MSIX restores its ordinary window without changing its account or network mode' })
-            if ($process.ExitCode -ne 0 -or $checks.Count -lt 30 -or $fail.Count -gt 0 -or $sharedProof.Count -ne 1) {
+            if (!$desktopCompleted -or $desktopExit -ne 0 -or $checks.Count -lt 30 -or $fail.Count -gt 0 -or $sharedProof.Count -ne 1) {
               $names = ($fail | Select-Object -ExpandProperty name) -join ', '
-              throw "Candidate UI checks failed: $names; count $($checks.Count); exit $($process.ExitCode)."
+              throw "Candidate UI checks failed: $names; count $($checks.Count); exit $desktopExit."
             }
             if ($env:DRAPE_MSIX_TEST -ceq 'true' -and $msixProof.Count -ne 1) { throw 'Installed ChatGPT MSIX proof missing.' }
             "Exact source $env:DRAPE_SOURCE; $($checks.Count) disposable Windows operations passed, including shared drawer input, site/program switching and crash recovery." |
@@ -237,7 +238,7 @@ jobs:
                   'MSIX_ACTIVATION_REJECTED', 'MSIX_WINDOW_TIMEOUT', 'MSIX_LAYOUT_TIMEOUT', 'MSIX_AUTOMATION_TIMEOUT', 'DRAWER_WAIT_TIMEOUT')) {
                 [string]$exceptionCheck[0].reason
               } else { '' }
-              $reason = "checks=$($checks.Count); exit=$($process.ExitCode); failed=" +
+              $reason = "checks=$($checks.Count); exit=$desktopExit; failed=" +
                 $names.Substring(0, [Math]::Min(100, $names.Length)) + '; kind=' + $kind + '; diagnostic=' + $inputReason + '; after=' +
                 $last.Substring(0, [Math]::Min(180, $last.Length))
             }
