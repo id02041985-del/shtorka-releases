@@ -127,6 +127,42 @@ jobs:
           Expand-Archive -LiteralPath $zip -DestinationPath $app
           $exe = Join-Path $app 'Shtorka.exe'
           if (!(Test-Path $exe)) { throw 'Candidate executable missing.' }
+          $stage = 'signed extension bridge'
+          $env:SHTORKA_OBYEZD_TEST_PACKAGES = $app
+          $bridgeRoot = Join-Path $root 'synthetic-obyezd-bridge'
+          $bridge = Start-Process -FilePath $exe -WorkingDirectory $app -ArgumentList @('--verify-obyezd-bridge', '--data-dir', ('"' + $bridgeRoot + '"')) -PassThru
+          try {
+            if (!$bridge.WaitForExit(90000) -or $bridge.ExitCode -ne 0) { throw 'Installed candidate extension bridge check did not complete.' }
+            $bridgeReport = Join-Path $bridgeRoot 'obyezd-bridge-checks.json'
+            if (!(Test-Path $bridgeReport)) { throw 'Installed candidate extension bridge report missing.' }
+            $bridgeParsed = ConvertFrom-Json -InputObject (Get-Content $bridgeReport -Raw)
+            $bridgeChecks = New-Object 'System.Collections.Generic.List[object]'
+            foreach ($check in $bridgeParsed) { $bridgeChecks.Add($check) }
+            if ($bridgeChecks.Count -ne 4 -or @($bridgeChecks | Where-Object { !$_.pass }).Count -ne 0) {
+              throw 'Installed candidate extension did not receive a valid app state response.'
+            }
+            'Real signed Obyezd extension received state from the exact unpublished portable Windows candidate; no tunnel started.' |
+              Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } finally {
+            if (!$bridge.HasExited) { Stop-Process -Id $bridge.Id -Force -ErrorAction SilentlyContinue }
+            Remove-Item Env:SHTORKA_OBYEZD_TEST_PACKAGES -ErrorAction SilentlyContinue
+          }
+          $stage = 'cross-process parent crash safety'
+          $crashRoot = Join-Path $root 'synthetic-parent-crash'
+          $probe = Start-Process -FilePath $exe -WorkingDirectory $app -ArgumentList @('--verify-program-parent-crash', ('"' + $crashRoot + '"')) -PassThru
+          try {
+            if (!$probe.WaitForExit(30000) -or $probe.ExitCode -ne 0) { throw 'Synthetic parent crash probe did not complete.' }
+            $crashReport = Join-Path $crashRoot 'program-parent-crash.json'
+            if (!(Test-Path $crashReport)) { throw 'Synthetic parent crash report missing.' }
+            $crash = ConvertFrom-Json -InputObject (Get-Content $crashReport -Raw)
+            if (!$crash.parentKilled) { throw 'Synthetic parent process did not stop.' }
+            if (!$crash.windowSurvived -or !$crash.restoredTopLevel) {
+              Write-Host '::error title=Program window safety::Synthetic application window did not survive its cross-process parent crash.'
+              throw 'Cross-process parent crash destroys or strands the application window.'
+            }
+          } finally {
+            if (!$probe.HasExited) { Stop-Process -Id $probe.Id -Force -ErrorAction SilentlyContinue }
+          }
           $profile = Join-Path $root 'synthetic-profile'
           $stage = 'installed app startup'
           $process = Start-Process -FilePath $exe -WorkingDirectory $app -ArgumentList @('--verify-program-operations', '--data-dir', ('"' + $profile + '"')) -PassThru
@@ -160,6 +196,11 @@ jobs:
             # This annotation is visible through the Checks API when hosted runner logs are unavailable.
             # Only fixed stage labels and fixture check names are exposed, never raw child stderr.
             $reason = $_.Exception.GetType().Name
+            if ($stage -eq 'signed extension bridge' -and $null -ne $bridgeChecks) {
+              $bridgeFailures = @($bridgeChecks | Where-Object { !$_.pass })
+              $names = (($bridgeFailures | Select-Object -ExpandProperty name) -join ', ') -replace '[^a-zA-Z0-9 ,.-]', ''
+              $reason = "checks=$($bridgeChecks.Count); failed=" + $names.Substring(0, [Math]::Min(160, $names.Length))
+            }
             if ($stage -eq 'program operations') {
               $names = (($fail | Select-Object -ExpandProperty name) -join ', ') -replace '[^a-zA-Z0-9 ,.-]', ''
               $reason = "checks=$($checks.Count); exit=$($process.ExitCode); failed=" +
