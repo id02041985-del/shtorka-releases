@@ -35,10 +35,22 @@ try {
     $err = Join-Path $folder 'private-tool-error.txt'
     if ($Panel.HasExited) { return }
     $phase = 'START_REPORT'
-    $reader = Start-Process -FilePath (Get-Command dotnet -ErrorAction Stop).Source -ArgumentList @(('"'+$tool+'"'),'report','--process-id',[string]$Panel.Id) `
-        -PassThru -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err
+    $reader = New-Object Diagnostics.Process
+    $reader.StartInfo = New-Object Diagnostics.ProcessStartInfo
+    $reader.StartInfo.FileName = (Get-Command dotnet -ErrorAction Stop).Source
+    $reader.StartInfo.Arguments = '"' + $tool + '" report --process-id ' + [string]$Panel.Id
+    $reader.StartInfo.UseShellExecute = $false
+    $reader.StartInfo.CreateNoWindow = $true
+    $reader.StartInfo.RedirectStandardOutput = $true
+    $reader.StartInfo.RedirectStandardError = $true
+    [void]$reader.Start()
+    $stdoutRead = $reader.StandardOutput.ReadToEndAsync()
+    $stderrRead = $reader.StandardError.ReadToEndAsync()
     $phase = 'WAIT_REPORT'
-    if (!$reader.WaitForExit(30000) -or $reader.ExitCode -ne 0) { throw 'Bounded stack diagnostic unavailable.' }
+    if (!$reader.WaitForExit(30000)) { throw 'Bounded stack diagnostic timed out.' }
+    [IO.File]::WriteAllText($out, $stdoutRead.GetAwaiter().GetResult())
+    [IO.File]::WriteAllText($err, $stderrRead.GetAwaiter().GetResult())
+    if ($reader.ExitCode -ne 0) { throw 'Stack diagnostic returned a failing exit code.' }
     $phase = 'CLASSIFY'
     # Output fixed categories only. Never print raw frames, source paths,
     # command lines, memory/dumps, window contents or tool stderr.
