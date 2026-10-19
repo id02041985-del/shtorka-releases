@@ -6,25 +6,40 @@ if ($env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:GITHUB_REPOSITORY -cne
 if ($Panel.HasExited -or $Panel.Path -ine $ExpectedExe) { return }
 $folder = Join-Path $env:RUNNER_TEMP ('panel-stack-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $folder -Force | Out-Null
-$reader = $null
+$reader = $null; $phase = 'DOWNLOAD'; $out = $null; $err = $null
+if ($ReportPath) {
+    $errorLog = Join-Path (Split-Path $ReportPath -Parent) 'error.log'
+    if ((Test-Path $errorLog) -and (Get-Item $errorLog).Length -le 1048576) {
+        $errorText = [IO.File]::ReadAllText($errorLog)
+        Write-Host 'Synthetic panel error log is present.'
+        foreach ($kind in @('NullReferenceException','InvalidOperationException','TaskCanceledException','ObjectDisposedException','COMException')) {
+            if ($errorText.Contains($kind)) { Write-Host ('Synthetic panel exception category ' + $kind) }
+        }
+    } else { Write-Host 'Synthetic panel error log is absent or too large for bounded classification.' }
+}
 try {
     # Official Microsoft NuGet package, version/source/authors inspected separately.
     # Use its net8 DLL directly with the existing image runtime, not a global install.
     $package = Join-Path $folder 'dotnet-stack.zip'
     Invoke-WebRequest -UseBasicParsing -Uri 'https://api.nuget.org/v3-flatcontainer/dotnet-stack/10.0.750501/dotnet-stack.10.0.750501.nupkg' -OutFile $package -TimeoutSec 60
+    $phase = 'VERIFY_PACKAGE'
     if ((Get-Item $package).Length -ne 6025361 -or
         (Get-FileHash $package -Algorithm SHA256).Hash -ine 'cd35f399fe023f1793b528590a4d723a1f2f1d9b25696386d926a697bd24c0ca') {
         throw 'Stack diagnostic package checksum mismatch.'
     }
+    $phase = 'EXTRACT'
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [IO.Compression.ZipFile]::ExtractToDirectory($package, $folder)
     $tool = Join-Path $folder 'tools/net8.0/any/dotnet-stack.dll'
     $out = Join-Path $folder 'private-stack.txt'
     $err = Join-Path $folder 'private-tool-error.txt'
     if ($Panel.HasExited) { return }
+    $phase = 'START_REPORT'
     $reader = Start-Process -FilePath (Get-Command dotnet -ErrorAction Stop).Source -ArgumentList @(('"'+$tool+'"'),'report','--process-id',[string]$Panel.Id) `
         -PassThru -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err
+    $phase = 'WAIT_REPORT'
     if (!$reader.WaitForExit(30000) -or $reader.ExitCode -ne 0) { throw 'Bounded stack diagnostic unavailable.' }
+    $phase = 'CLASSIFY'
     # Output fixed categories only. Never print raw frames, source paths,
     # command lines, memory/dumps, window contents or tool stderr.
     $categories = [ordered]@{
@@ -75,7 +90,23 @@ try {
         } else { Write-Host 'Synthetic panel error log is absent.' }
     }
     Write-Host 'Panel managed wait classification completed; raw data is not published.'
-} catch { Write-Host 'Panel managed wait classification unavailable; original failed exit gate is retained.' }
+} catch {
+    $kind = $_.Exception.GetType().Name
+    $http = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
+    $toolExit = if ($reader -and $reader.HasExited) { [string]$reader.ExitCode } else { 'not-exited' }
+    Write-Host "Panel stack diagnostic failed phase $phase, exception $kind, HTTP $http, tool exit $toolExit. Original exit gate retained."
+    $toolText = ''
+    foreach ($file in @($out,$err)) {
+        if ($file -and (Test-Path $file) -and (Get-Item $file).Length -le 1048576) { $toolText += [IO.File]::ReadAllText($file) }
+    }
+    foreach ($entry in @(
+        @('install or update .NET|framework.*not found|framework.*missing','RUNTIME_MISSING'),
+        @('Unrecognized command|Unrecognized.*option','COMMAND_UNSUPPORTED'),
+        @('Access.*denied|Permission.*denied','ACCESS_DENIED'),
+        @('Unable.*connect|connection|timed out|named pipe','IPC_CONNECTION'),
+        @('diagnostic.*disabled','DIAGNOSTICS_DISABLED')
+    )) { if ($toolText -match $entry[0]) { Write-Host ('Panel stack diagnostic category ' + $entry[1]) } }
+}
 finally {
     if ($reader -and !$reader.HasExited) { Stop-Process -Id $reader.Id -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction SilentlyContinue
