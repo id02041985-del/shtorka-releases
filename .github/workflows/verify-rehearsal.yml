@@ -232,7 +232,8 @@ jobs:
               }
               $inputReason = if ($exceptionCheck.Count -eq 1 -and [string]$exceptionCheck[0].reason -cin
                 @('EDIT_BOUNDS', 'POINTER_POSITION', 'POINTER_OCCLUDED', 'POINTER_FOCUS', 'WHEEL_NO_SCROLL',
-                  'DRAWER_ANCHOR', 'WINDOW_MISSING', 'WINDOW_ID_CHANGED', 'MINIMUM_WIDTH', 'FOCUS_REJECTED', 'RESTORATION_PENDING', 'LAYOUT_UNCONFIRMED',
+                  'DRAWER_ANCHOR', 'WINDOW_MISSING', 'WINDOW_ID_CHANGED', 'MINIMUM_WIDTH', 'MINIMUM_HEIGHT', 'FOCUS_REJECTED', 'RESTORATION_PENDING', 'LAYOUT_UNCONFIRMED',
+                  'HOST_START_FAILED', 'TARGET_EXITED', 'FRAME_REJECTED', 'BOUNDS_REJECTED', 'POSITION_NATIVE_ERROR',
                   'MSIX_ACTIVATION_REJECTED', 'MSIX_WINDOW_TIMEOUT', 'MSIX_LAYOUT_TIMEOUT', 'MSIX_AUTOMATION_TIMEOUT', 'DRAWER_WAIT_TIMEOUT')) {
                 [string]$exceptionCheck[0].reason
               } else { '' }
