@@ -204,6 +204,22 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
         if ($results -isnot [array]) { $results = @($results) }
         $failed = @($results | Where-Object { $_.pass -ne $true })
         if (!$completed -or $process.ExitCode -ne 0 -or $results.Count -lt $expectedChecks -or $results.Count -gt $maximumChecks -or $failed.Count -ne 0) {
+            if (!$completed) {
+                # Only this exact synthetic panel PID; bounded enum/numeric fields,
+                # never memory dumps, window text, command lines or account data.
+                try {
+                    $process.Refresh()
+                    Write-Host "Panel exit diagnostic: PID $($process.Id), threads $($process.Threads.Count)."
+                    foreach ($marker in @($results | Where-Object { $_.name -cmatch '^Panel UI thread ID [0-9]+$' })) {
+                        Write-Host ([string]$marker.name)
+                    }
+                    foreach ($thread in @($process.Threads | Select-Object -First 32)) {
+                        $state = [string]$thread.ThreadState
+                        $waitReason = if ($state -ceq 'Wait') { [string]$thread.WaitReason } else { 'NotWaiting' }
+                        Write-Host "Panel thread $($thread.Id): $state / $waitReason."
+                    }
+                } catch { Write-Host 'Panel exit thread snapshot unavailable.' }
+            }
             $reason = if ($failed.Count -ne 0) { [string]$failed[0].name } else { "Expected $expectedChecks..$maximumChecks checks, got $($results.Count)" }
             if ($reason -ceq 'Exception' -or !$completed) {
                 # Cleanup checkpoints follow an exception; report the operation
