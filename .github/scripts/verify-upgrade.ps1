@@ -206,8 +206,14 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
         if (!$completed -or $process.ExitCode -ne 0 -or $results.Count -lt $expectedChecks -or $results.Count -gt $maximumChecks -or $failed.Count -ne 0) {
             $reason = if ($failed.Count -ne 0) { [string]$failed[0].name } else { "Expected $expectedChecks..$maximumChecks checks, got $($results.Count)" }
             if ($reason -ceq 'Exception' -or !$completed) {
-                $passed = @($results | Where-Object { $_.pass -eq $true })
-                $last = if ($passed.Count -gt 0) { [string]$passed[-1].name } else { 'no completed check' }
+                # Cleanup checkpoints follow an exception; report the operation
+                # immediately before the FIRST failure rather than masking it.
+                $beforeFailure = @()
+                foreach ($row in $results) {
+                    if ($row.pass -ne $true) { break }
+                    $beforeFailure += $row
+                }
+                $last = if ($beforeFailure.Count -gt 0) { [string]$beforeFailure[-1].name } else { 'no completed check' }
                 $code = if ($failed.Count) { [string]$failed[0].reason } else { 'DESKTOP_TIMEOUT' }
                 if ($code -cnotmatch '^[A-Z_]{1,40}$') { $code = 'UNCLASSIFIED' }
                 $reason = "Stopped after $last ($($results.Count) results): $code"
