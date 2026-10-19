@@ -219,6 +219,7 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
                         Write-Host "Panel thread $($thread.Id): $state / $waitReason."
                     }
                 } catch { Write-Host 'Panel exit thread snapshot unavailable.' }
+                & (Join-Path $PSScriptRoot 'diagnose-panel-exit.ps1') -Panel $process -ExpectedExe $exe
             }
             $reason = if ($failed.Count -ne 0) { [string]$failed[0].name } else { "Expected $expectedChecks..$maximumChecks checks, got $($results.Count)" }
             if ($reason -ceq 'Exception' -or !$completed) {
