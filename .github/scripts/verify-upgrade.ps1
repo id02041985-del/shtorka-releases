@@ -150,7 +150,20 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
     $report = Join-Path $profile $reportName
     $process = Start-Process -FilePath $exe -WorkingDirectory $appDir -ArgumentList @($argument,'--data-dir',('"'+$profile+'"')) -PassThru
     try {
-        $completed = $process.WaitForExit($timeoutMs)
+        $deadline = (Get-Date).AddMilliseconds($timeoutMs)
+        $cleanupDeadline = $null
+        do {
+            if ($process.WaitForExit(1000)) { break }
+            if ($argument -ceq '--verify-program-overlay' -and (Test-Path -LiteralPath $report)) {
+                try {
+                    $partial = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
+                    if (!$cleanupDeadline -and @($partial | Where-Object name -CEQ 'Program operation checks complete; beginning safe shutdown').Count -gt 0) {
+                        $cleanupDeadline = (Get-Date).AddSeconds(30)
+                    }
+                } catch { } # A concurrently written report is read again next second.
+            }
+        } while ((Get-Date) -lt $deadline -and (!$cleanupDeadline -or (Get-Date) -lt $cleanupDeadline))
+        $completed = $process.HasExited
         if (!(Test-Path -LiteralPath $report)) { throw "Installed application did not complete $argument" }
         # ConvertFrom-Json can return the root JSON array as one pipeline item
         # on Windows PowerShell. Assign first, then enumerate its elements.
