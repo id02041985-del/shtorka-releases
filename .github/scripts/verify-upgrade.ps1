@@ -230,12 +230,13 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
         if ($argument -ceq '--verify-program-overlay' -and (Test-Path -LiteralPath $boundsObservation)) {
             $bounds = Get-Content -LiteralPath $boundsObservation -Raw | ConvertFrom-Json
             $validBounds = $bounds.panelPid -eq $process.Id -and $bounds.fits -is [bool] -and
-                $bounds.readTarget -is [bool] -and $bounds.readAnchor -is [bool]
-            foreach ($field in @('attempt','requestedWidth','requestedHeight','actualWidth','actualHeight','anchorWidth','anchorHeight','deltaX','deltaY')) {
+                $bounds.readTarget -is [bool] -and $bounds.readAnchor -is [bool] -and
+                $bounds.maximized -is [bool] -and $bounds.minimized -is [bool]
+            foreach ($field in @('attempt','showCommand','requestedWidth','requestedHeight','actualWidth','actualHeight','anchorWidth','anchorHeight','deltaX','deltaY')) {
                 if ($bounds.$field -isnot [int] -and $bounds.$field -isnot [long] -or [Math]::Abs([long]$bounds.$field) -gt 100000) { $validBounds = $false }
             }
             if ($validBounds) {
-                Write-Host "Last bounded placement observation: attempt=$($bounds.attempt); fits=$($bounds.fits); requested=$($bounds.requestedWidth)x$($bounds.requestedHeight); actual=$($bounds.actualWidth)x$($bounds.actualHeight); currentAnchor=$($bounds.anchorWidth)x$($bounds.anchorHeight); delta=$($bounds.deltaX),$($bounds.deltaY); reads=$($bounds.readTarget),$($bounds.readAnchor)."
+                Write-Host "Last bounded placement observation (includes intentional rejection fixture): attempt=$($bounds.attempt); fits=$($bounds.fits); requested=$($bounds.requestedWidth)x$($bounds.requestedHeight); actual=$($bounds.actualWidth)x$($bounds.actualHeight); currentAnchor=$($bounds.anchorWidth)x$($bounds.anchorHeight); delta=$($bounds.deltaX),$($bounds.deltaY); reads=$($bounds.readTarget),$($bounds.readAnchor); maximized=$($bounds.maximized); minimized=$($bounds.minimized); showCommand=$($bounds.showCommand)."
             }
         }
         if (!$completed -or $process.ExitCode -ne 0 -or $results.Count -lt $expectedChecks -or $results.Count -gt $maximumChecks -or $failed.Count -ne 0) {
@@ -321,6 +322,9 @@ if ($drawerRelease) {
             'Real input reaches the different-DPI program window in the shared drawer',
             'Transient native bounds rejection settles to the exact current drawer viewport before readiness',
             'Permanent native bounds rejection keeps the exact-fit guard and restores the ordinary window',
+            'An initially maximized native window fits the drawer and repeated focus preserves its exact viewport',
+            'Detach restores the original maximized state and ordinary activation does not unmaximize the window',
+            'Immediate reattach of a restored maximized window again requires exact drawer bounds',
             'Destroying the drawer owner restores the ordinary application window with unsaved text',
             'Installed ChatGPT MSIX restores its ordinary window without changing its account or network mode'
         )
