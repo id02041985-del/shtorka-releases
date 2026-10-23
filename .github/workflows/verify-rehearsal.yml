@@ -40,6 +40,18 @@ jobs:
             Write-Host ('::error title=Candidate verification failure::' + $reason)
             throw 'Candidate verification failed; draft remains unpublished.'
           }
+      - name: Retain synthetic Obyezd UI and viewport evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: obyezd-refresh-windows-evidence
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            ~/AppData/Local/Shtorka/obyezd-refresh*.json
+            ~/AppData/Local/Shtorka/obyezd-popup-windows.png
+            ~/AppData/Local/Shtorka/main-frame-*.json
+            ~/AppData/Local/Shtorka/main-frame-*.png
 
   probe-draft:
     if: github.repository == 'id02041985-del/shtorka-releases' && github.event.action == 'drape-draft-probe'
