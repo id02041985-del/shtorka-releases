@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 public static class FrameCapture {
  [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left,Top,Right,Bottom; }
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out Rect r);
+ [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h,IntPtr dc,uint flags);
 }
 '@
@@ -33,6 +34,17 @@ try {
     $handle = [IntPtr]$drawer.Current.NativeWindowHandle
     $rect = New-Object FrameCapture+Rect
     if (![FrameCapture]::GetWindowRect($handle,[ref]$rect)) { throw 'Previous drawer rectangle unavailable.' }
+    try {
+        $documents = $drawer.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,[Windows.Automation.ControlType]::Document))
+        $document = $documents | Where-Object { !$_.Current.IsOffscreen -and $_.Current.BoundingRectangle.Width -gt 100 -and $_.Current.BoundingRectangle.Height -gt 100 } |
+            Sort-Object { $_.Current.BoundingRectangle.Width * $_.Current.BoundingRectangle.Height } -Descending | Select-Object -First 1
+        if ($document) {
+            $bounds = $document.Current.BoundingRectangle
+            $metrics = @{ source='actual previous installed drawer / UIAutomation document bounds'; leftPixels=($bounds.Left-$rect.Left); bottomPixels=($rect.Bottom-$bounds.Bottom); dpi=[FrameCapture]::GetDpiForWindow($handle) }
+            $metrics | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $Profile 'main-frame-before-metrics.json') -Encoding UTF8
+            Write-Host "Previous actual frame: left=$($metrics.leftPixels)px; bottom=$($metrics.bottomPixels)px; DPI=$($metrics.dpi)."
+        } else { Write-Host 'Previous document bounds not exposed; the actual screenshot is retained without inferred dimensions.' }
+    } catch { Write-Host 'Previous document dimensions unavailable; screenshot capture remains mandatory.' }
     $bitmap = New-Object Drawing.Bitmap ($rect.Right-$rect.Left),($rect.Bottom-$rect.Top)
     $graphics = [Drawing.Graphics]::FromImage($bitmap)
     $dc = $graphics.GetHdc()
