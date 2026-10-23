@@ -345,7 +345,7 @@ if ($drawerRelease) {
             'An unrelated real fullscreen window still suppresses Drape while a program session exists',
             'Destroying the drawer owner restores the ordinary application window with unsaved text',
             'Installed ChatGPT MSIX restores its ordinary window without changing its account or network mode',
-            'Reattached ChatGPT has its own exact-window restoration receipt before the broker crash'
+            'A native pin click reattaches ChatGPT with its own exact-window restoration receipt before the broker crash'
         )
         Write-Host "Installed program lifecycle cycle $cycle/$cycles passed with normal panel exit0."
     }
