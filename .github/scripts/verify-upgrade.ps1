@@ -72,16 +72,17 @@ function Get-Installer([string]$version,[bool]$requirePublished,[string]$path) {
     if ((Get-Item -LiteralPath $path).Length -ne $asset[0].size -or $sha -cne $asset[0].digest.Substring(7).ToLowerInvariant()) { throw 'Downloaded installer differs from release asset.' }
     return @{ Version=$version; Sha256=$sha; Bytes=[long]$asset[0].size; Draft=[bool]$release.draft }
 }
-function Get-CandidateBridgeCrx([string]$version) {
+function Get-CandidateBridgeCrx([string]$version,[string]$fixtureName = 'Obyezd.crx') {
+    if ($fixtureName -cnotin @('Obyezd.crx','Obyezd-next.crx')) { throw 'Unexpected fixture.' }
     $release = Get-Release $version $true
     if ($release.tag_name -cne "v$version" -or !$release.draft -or $release.id -le 0) { throw 'Candidate bridge draft missing.' }
-    $asset = @($release.assets | Where-Object name -CEQ 'Obyezd.crx')
+    $asset = @($release.assets | Where-Object name -CEQ $fixtureName)
     if ($asset.Count -ne 1 -or $asset[0].size -le 1000 -or
         $asset[0].digest -notmatch '^sha256:[a-fA-F0-9]{64}$') { throw 'Signed bridge fixture metadata missing.' }
-    $path = Join-Path $work 'Obyezd.crx'
+    $path = Join-Path $work $fixtureName
     Invoke-ReadRetry 'Candidate bridge download' {
         Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
-        $nativeOutput = & gh release download "v$version" --repo $repo --pattern Obyezd.crx --dir $work --clobber 2>&1
+        $nativeOutput = & gh release download "v$version" --repo $repo --pattern $fixtureName --dir $work --clobber 2>&1
         if ($LASTEXITCODE -ne 0) {
             $failure = [InvalidOperationException]::new('Candidate bridge read failed.')
             if (($nativeOutput -join ' ') -match 'HTTP (401|403|404)') { $failure.Data['NoRetry'] = $true }
@@ -107,6 +108,9 @@ if ($Mode -eq 'candidate') {
 }
 $drawerRelease = [version]$NewVersion -ge [version]'0.12.22'
 $bridgeCrx = if ($Mode -eq 'candidate') { Get-CandidateBridgeCrx $NewVersion } else { $null }
+if ($Mode -eq 'candidate' -and [version]$NewVersion -ge [version]'0.12.26') {
+    $nextCrx = Get-CandidateBridgeCrx $NewVersion 'Obyezd-next.crx'
+}
 # All private draft downloads are complete. Neither the ordinary app started
 # by the installer nor any foreign desktop fixture may inherit workflow tokens.
 foreach ($name in @('GH_TOKEN','GITHUB_TOKEN','ACTIONS_RUNTIME_TOKEN','ACTIONS_ID_TOKEN_REQUEST_TOKEN')) {
@@ -150,6 +154,9 @@ $link.TargetPath = $exe
 $link.WorkingDirectory = $appDir
 $link.Save()
 Move-Item -LiteralPath $tempShortcut -Destination $oldShortcut -Force
+if ($Mode -eq 'candidate' -and [version]$NewVersion -ge [version]'0.12.26') {
+    & (Join-Path $PSScriptRoot 'capture-frame-before.ps1') -Exe $exe -Directory $appDir -Profile $profile
+}
 $args = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOOFFICECOMPONENT=1','/UPDATE=1','/TASKS=desktopicon')
 $process = Start-Process -FilePath $newPath -ArgumentList $args -PassThru -WindowStyle Hidden
 if (!$process.WaitForExit(180000) -or $process.ExitCode -ne 0) { throw 'Candidate installer failed.' }
@@ -262,6 +269,17 @@ if ($Mode -eq 'candidate') {
     $env:SHTORKA_OBYEZD_TEST_PACKAGES = Split-Path $bridgeCrx -Parent
     try { Verify-InstalledRail '--verify-obyezd-bridge' 'obyezd-bridge-checks.json' 4 }
     finally { Remove-Item Env:SHTORKA_OBYEZD_TEST_PACKAGES -ErrorAction SilentlyContinue }
+}
+if ($Mode -eq 'candidate' -and [version]$NewVersion -ge [version]'0.12.26') {
+    $env:SHTORKA_OBYEZD_TEST_PACKAGES = Split-Path $bridgeCrx -Parent
+    try {
+        Verify-InstalledRail '--verify-obyezd-refresh' 'obyezd-refresh.json' 29 29 180000 @(
+            'Real Update button installs the newer signed official candidate',
+            'Signed extension update preserves account bytes, rules and manual OFF',
+            'Actual keyboard input saves a CurrentUser DPAPI account and clears the password field'
+        )
+        Verify-InstalledRail '--verify-obyezd-refresh-restart' 'obyezd-refresh-restart.json' 5 5 90000
+    } finally { Remove-Item Env:SHTORKA_OBYEZD_TEST_PACKAGES -ErrorAction SilentlyContinue }
 }
 if ($drawerRelease) {
     $cycles = if ([version]$NewVersion -ge [version]'0.12.23') { 3 } else { 1 }
