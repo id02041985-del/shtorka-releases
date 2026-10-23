@@ -216,7 +216,11 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
         $pinObservation = Join-Path $profile 'program-pin-observation.json'
         if ($argument -ceq '--verify-program-overlay' -and (Test-Path -LiteralPath $pinObservation)) {
             $pin = Get-Content -LiteralPath $pinObservation -Raw | ConvertFrom-Json
-            if ($pin.pid -eq $process.Id) {
+            $validPinObservation = $pin.pid -eq $process.Id
+            foreach ($pinField in @('entryPinned','buttonExists','buttonVisible','storedPin','railVisible','suppressed')) {
+                if ($pin.$pinField -isnot [bool]) { $validPinObservation = $false }
+            }
+            if ($validPinObservation) {
                 Write-Host "Native pin observation: entry=$($pin.entryPinned); control=$($pin.buttonExists); visible=$($pin.buttonVisible); saved=$($pin.storedPin); railVisible=$($pin.railVisible); suppressed=$($pin.suppressed)."
             }
         }
