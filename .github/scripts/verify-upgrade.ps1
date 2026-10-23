@@ -191,6 +191,7 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
     # A new process must produce its own proof, especially across stress cycles.
     Remove-Item -LiteralPath $report -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath (Join-Path $profile 'program-bounds-observation.json') -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $profile 'program-msix-restore-observation.json') -Force -ErrorAction SilentlyContinue
     $process = Start-Process -FilePath $exe -WorkingDirectory $appDir -ArgumentList @($argument,'--data-dir',('"'+$profile+'"')) -PassThru
     try {
         $deadline = (Get-Date).AddMilliseconds($timeoutMs)
@@ -237,6 +238,21 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
             }
             if ($validBounds) {
                 Write-Host "Last bounded placement observation (includes intentional rejection fixture): attempt=$($bounds.attempt); fits=$($bounds.fits); requested=$($bounds.requestedWidth)x$($bounds.requestedHeight); actual=$($bounds.actualWidth)x$($bounds.actualHeight); currentAnchor=$($bounds.anchorWidth)x$($bounds.anchorHeight); delta=$($bounds.deltaX),$($bounds.deltaY); reads=$($bounds.readTarget),$($bounds.readAnchor); maximized=$($bounds.maximized); minimized=$($bounds.minimized); showCommand=$($bounds.showCommand)."
+            }
+        }
+        $restoreObservation = Join-Path $profile 'program-msix-restore-observation.json'
+        if ($argument -ceq '--verify-program-overlay' -and (Test-Path -LiteralPath $restoreObservation)) {
+            $restore = Get-Content -LiteralPath $restoreObservation -Raw | ConvertFrom-Json
+            $validRestore = $restore.panelPid -eq $process.Id
+            foreach ($field in @('alive','visible','topLevel','firewallAbsent','firstStyleMatch','firstExStyleMatch','receiptStyleMatch','receiptExStyleMatch')) {
+                if ($restore.$field -isnot [bool]) { $validRestore = $false }
+            }
+            foreach ($field in @('firstStyle','firstExStyle','receiptStyle','receiptExStyle','actualStyle','actualExStyle')) {
+                if (($restore.$field -isnot [int] -and $restore.$field -isnot [long]) -or [long]$restore.$field -lt 0 -or [long]$restore.$field -gt [uint32]::MaxValue) { $validRestore = $false }
+            }
+            if ($validRestore) {
+                Write-Host "MSIX crash restore: alive=$($restore.alive); visible=$($restore.visible); topLevel=$($restore.topLevel); firewallAbsent=$($restore.firewallAbsent); firstStyle=$($restore.firstStyleMatch); firstExStyle=$($restore.firstExStyleMatch); receiptStyle=$($restore.receiptStyleMatch); receiptExStyle=$($restore.receiptExStyleMatch)."
+                Write-Host ('MSIX native styles first/receipt/actual: {0:x8}/{1:x8}/{2:x8}; extended: {3:x8}/{4:x8}/{5:x8}.' -f [long]$restore.firstStyle,[long]$restore.receiptStyle,[long]$restore.actualStyle,[long]$restore.firstExStyle,[long]$restore.receiptExStyle,[long]$restore.actualExStyle)
             }
         }
         if (!$completed -or $process.ExitCode -ne 0 -or $results.Count -lt $expectedChecks -or $results.Count -gt $maximumChecks -or $failed.Count -ne 0) {
@@ -328,7 +344,8 @@ if ($drawerRelease) {
             'A real delayed maximize after frame change is normalized back to the exact drawer viewport',
             'An unrelated real fullscreen window still suppresses Drape while a program session exists',
             'Destroying the drawer owner restores the ordinary application window with unsaved text',
-            'Installed ChatGPT MSIX restores its ordinary window without changing its account or network mode'
+            'Installed ChatGPT MSIX restores its ordinary window without changing its account or network mode',
+            'Reattached ChatGPT has its own exact-window restoration receipt before the broker crash'
         )
         Write-Host "Installed program lifecycle cycle $cycle/$cycles passed with normal panel exit0."
     }
