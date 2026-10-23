@@ -325,6 +325,7 @@ if ($drawerRelease) {
             'An initially maximized native window fits the drawer and repeated focus preserves its exact viewport',
             'Detach restores the original maximized state and ordinary activation does not unmaximize the window',
             'Immediate reattach of a restored maximized window again requires exact drawer bounds',
+            'A real delayed maximize after frame change is normalized back to the exact drawer viewport',
             'Destroying the drawer owner restores the ordinary application window with unsaved text',
             'Installed ChatGPT MSIX restores its ordinary window without changing its account or network mode'
         )
