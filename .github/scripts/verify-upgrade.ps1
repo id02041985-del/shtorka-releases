@@ -282,8 +282,8 @@ if ($Mode -eq 'candidate' -and [version]$NewVersion -ge [version]'0.12.26') {
         )
         $frame = Get-Content -LiteralPath (Join-Path $profile 'main-frame-drawer-metrics.json') -Raw | ConvertFrom-Json
         Write-Host "Updated actual drawer: left=$($frame.leftDip)DIP; bottom=$($frame.bottomDip)DIP; DPI=$($frame.dpi)."
-        foreach ($mode in (Get-Content -LiteralPath (Join-Path $profile 'main-frame-metrics.json') -Raw | ConvertFrom-Json)) {
-            Write-Host "Actual client viewport $($mode.state): left=$($mode.leftDip)DIP; bottom=$($mode.bottomDip)DIP; DPI=$($mode.dpi); OS-scale-simulated=$($mode.windowsScaleSimulated)."
+        foreach ($viewportCase in (Get-Content -LiteralPath (Join-Path $profile 'main-frame-metrics.json') -Raw | ConvertFrom-Json)) {
+            Write-Host "Actual client viewport $($viewportCase.state): left=$($viewportCase.leftDip)DIP; bottom=$($viewportCase.bottomDip)DIP; DPI=$($viewportCase.dpi); OS-scale-simulated=$($viewportCase.windowsScaleSimulated)."
         }
         Verify-InstalledRail '--verify-obyezd-refresh-restart' 'obyezd-refresh-restart.json' 5 5 90000
     } finally { Remove-Item Env:SHTORKA_OBYEZD_TEST_PACKAGES -ErrorAction SilentlyContinue }
