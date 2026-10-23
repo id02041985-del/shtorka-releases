@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][string]$Exe,[Parameter(Mandatory)][string]$Directory,[Parameter(Mandatory)][string]$Profile)
+﻿param([Parameter(Mandatory)][string]$Exe,[Parameter(Mandatory)][string]$Directory,[Parameter(Mandatory)][string]$Profile)
 $ErrorActionPreference = 'Stop'
 if ($env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:GITHUB_REPOSITORY -cne 'id02041985-del/shtorka-releases') { throw 'Disposable public runner required.' }
 Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,System.Drawing
