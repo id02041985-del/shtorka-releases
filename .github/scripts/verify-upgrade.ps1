@@ -190,6 +190,7 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
     $report = Join-Path $profile $reportName
     # A new process must produce its own proof, especially across stress cycles.
     Remove-Item -LiteralPath $report -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $profile 'program-bounds-observation.json') -Force -ErrorAction SilentlyContinue
     $process = Start-Process -FilePath $exe -WorkingDirectory $appDir -ArgumentList @($argument,'--data-dir',('"'+$profile+'"')) -PassThru
     try {
         $deadline = (Get-Date).AddMilliseconds($timeoutMs)
@@ -225,6 +226,18 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
             }
         }
         $failed = @($results | Where-Object { $_.pass -ne $true })
+        $boundsObservation = Join-Path $profile 'program-bounds-observation.json'
+        if ($argument -ceq '--verify-program-overlay' -and (Test-Path -LiteralPath $boundsObservation)) {
+            $bounds = Get-Content -LiteralPath $boundsObservation -Raw | ConvertFrom-Json
+            $validBounds = $bounds.panelPid -eq $process.Id -and $bounds.fits -is [bool] -and
+                $bounds.readTarget -is [bool] -and $bounds.readAnchor -is [bool]
+            foreach ($field in @('attempt','requestedWidth','requestedHeight','actualWidth','actualHeight','anchorWidth','anchorHeight','deltaX','deltaY')) {
+                if ($bounds.$field -isnot [int] -and $bounds.$field -isnot [long] -or [Math]::Abs([long]$bounds.$field) -gt 100000) { $validBounds = $false }
+            }
+            if ($validBounds) {
+                Write-Host "Last bounded placement observation: attempt=$($bounds.attempt); fits=$($bounds.fits); requested=$($bounds.requestedWidth)x$($bounds.requestedHeight); actual=$($bounds.actualWidth)x$($bounds.actualHeight); currentAnchor=$($bounds.anchorWidth)x$($bounds.anchorHeight); delta=$($bounds.deltaX),$($bounds.deltaY); reads=$($bounds.readTarget),$($bounds.readAnchor)."
+            }
+        }
         if (!$completed -or $process.ExitCode -ne 0 -or $results.Count -lt $expectedChecks -or $results.Count -gt $maximumChecks -or $failed.Count -ne 0) {
             if (!$completed) {
                 # Only this exact synthetic panel PID; bounded enum/numeric fields,
@@ -306,6 +319,8 @@ if ($drawerRelease) {
             'A real click on the ordinary Programs action opens the existing application in the shared drawer',
             'Closing and reopening the drawer preserves the same modal Save dialog',
             'Real input reaches the different-DPI program window in the shared drawer',
+            'Transient native bounds rejection settles to the exact current drawer viewport before readiness',
+            'Permanent native bounds rejection keeps the exact-fit guard and restores the ordinary window',
             'Destroying the drawer owner restores the ordinary application window with unsaved text',
             'Installed ChatGPT MSIX restores its ordinary window without changing its account or network mode'
         )
