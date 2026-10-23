@@ -213,6 +213,13 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
         # on Windows PowerShell. Assign first, then enumerate its elements.
         $results = ConvertFrom-Json -InputObject (Get-Content -LiteralPath $report -Raw)
         if ($results -isnot [array]) { $results = @($results) }
+        $pinObservation = Join-Path $profile 'program-pin-observation.json'
+        if ($argument -ceq '--verify-program-overlay' -and (Test-Path -LiteralPath $pinObservation)) {
+            $pin = Get-Content -LiteralPath $pinObservation -Raw | ConvertFrom-Json
+            if ($pin.pid -eq $process.Id) {
+                Write-Host "Native pin observation: entry=$($pin.entryPinned); control=$($pin.buttonExists); visible=$($pin.buttonVisible); saved=$($pin.storedPin); railVisible=$($pin.railVisible); suppressed=$($pin.suppressed)."
+            }
+        }
         $failed = @($results | Where-Object { $_.pass -ne $true })
         if (!$completed -or $process.ExitCode -ne 0 -or $results.Count -lt $expectedChecks -or $results.Count -gt $maximumChecks -or $failed.Count -ne 0) {
             if (!$completed) {
