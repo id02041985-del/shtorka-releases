@@ -226,7 +226,7 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
                 Write-Host "Native pin observation: entry=$($pin.entryPinned); control=$($pin.buttonExists); visible=$($pin.buttonVisible); saved=$($pin.storedPin); railVisible=$($pin.railVisible); suppressed=$($pin.suppressed)."
             }
         }
-        $failed = @($results | Where-Object { $_.pass -ne $true })
+        $failed = @($results | Where-Object { $_.pass -isnot [bool] -or $_.pass -ne $true })
         $boundsObservation = Join-Path $profile 'program-bounds-observation.json'
         if ($argument -ceq '--verify-program-overlay' -and (Test-Path -LiteralPath $boundsObservation)) {
             $bounds = Get-Content -LiteralPath $boundsObservation -Raw | ConvertFrom-Json
@@ -259,6 +259,8 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
                 Write-Host ('MSIX native styles first/receipt/actual: {0:x8}/{1:x8}/{2:x8}; extended: {3:x8}/{4:x8}/{5:x8}.' -f [long]$restore.firstStyle,[long]$restore.receiptStyle,[long]$restore.actualStyle,[long]$restore.firstExStyle,[long]$restore.receiptExStyle,[long]$restore.actualExStyle)
             }
         }
+        $exitDescription = if ($completed) { [string]$process.ExitCode } else { 'pending' }
+        Write-Host "Installed result contract: $argument; completed=$completed; exit=$exitDescription; results=$($results.Count); failed=$($failed.Count)."
         if (!$completed -or $process.ExitCode -ne 0 -or $results.Count -lt $expectedChecks -or $results.Count -gt $maximumChecks -or $failed.Count -ne 0) {
             if (!$completed) {
                 # Only this exact synthetic panel PID; bounded enum/numeric fields,
@@ -336,7 +338,12 @@ if ($Mode -eq 'candidate' -and [version]$NewVersion -ge [version]'0.12.26') {
 if ($drawerRelease) {
     $cycles = if ([version]$NewVersion -ge [version]'0.12.23') { 3 } else { 1 }
     for ($cycle = 1; $cycle -le $cycles; $cycle++) {
-        Verify-InstalledRail '--verify-program-overlay' 'program-overlay.json' 40 100 600000 @(
+        # 0.12.27 adds named heartbeat/operation-lifetime assertions to the
+        # installed overlay suite. Keep a strict exact count for this version;
+        # all boolean, exit, timeout and named-proof gates remain mandatory.
+        $overlayMinimum = if ($NewVersion -ceq '0.12.27') { 113 } else { 40 }
+        $overlayMaximum = if ($NewVersion -ceq '0.12.27') { 113 } else { 100 }
+        Verify-InstalledRail '--verify-program-overlay' 'program-overlay.json' $overlayMinimum $overlayMaximum 600000 @(
             'A real click on the ordinary Programs action opens the existing application in the shared drawer',
             'Closing and reopening the drawer preserves the same modal Save dialog',
             'Real input reaches the different-DPI program window in the shared drawer',
@@ -351,6 +358,19 @@ if ($drawerRelease) {
             'Installed ChatGPT MSIX restores its ordinary window without changing its account or network mode',
             'A native pin click reattaches ChatGPT with its own exact-window restoration receipt before the broker crash'
         )
+        if ($NewVersion -ceq '0.12.27') {
+            $overlayReport = Get-Content -LiteralPath (Join-Path $profile 'program-overlay.json') -Raw | ConvertFrom-Json
+            foreach ($proof in @(
+                'Real named-pipe heartbeats survive a paused UI; silence and invalid peer remain rejected',
+                'Real launcher suspends at the synthetic read-only result without blocking WPF',
+                'Second launcher entry point rejects a double activation before inspecting or starting a process',
+                'Closing the initiating WPF dialog cancels activation after inspection'
+            )) {
+                if (@($overlayReport | Where-Object { $_.pass -is [bool] -and $_.pass -eq $true -and $_.name -ceq $proof }).Count -ne 1) {
+                    throw 'Required 0.12.27 operation or heartbeat proof missing.'
+                }
+            }
+        }
         Write-Host "Installed program lifecycle cycle $cycle/$cycles passed with normal panel exit0."
     }
 } else {
