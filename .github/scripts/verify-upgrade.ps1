@@ -341,8 +341,8 @@ if ($drawerRelease) {
         # 0.12.27 adds named heartbeat/operation-lifetime assertions to the
         # installed overlay suite. Keep a strict exact count for this version;
         # all boolean, exit, timeout and named-proof gates remain mandatory.
-        $overlayMinimum = if ($NewVersion -ceq '0.12.27') { 113 } else { 40 }
-        $overlayMaximum = if ($NewVersion -ceq '0.12.27') { 113 } else { 100 }
+        $overlayMinimum = if ($NewVersion -ceq '0.12.28') { 116 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 40 }
+        $overlayMaximum = if ($NewVersion -ceq '0.12.28') { 116 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 100 }
         Verify-InstalledRail '--verify-program-overlay' 'program-overlay.json' $overlayMinimum $overlayMaximum 600000 @(
             'A real click on the ordinary Programs action opens the existing application in the shared drawer',
             'Closing and reopening the drawer preserves the same modal Save dialog',
@@ -358,7 +358,7 @@ if ($drawerRelease) {
             'Installed ChatGPT MSIX restores its ordinary window without changing its account or network mode',
             'A native pin click reattaches ChatGPT with its own exact-window restoration receipt before the broker crash'
         )
-        if ($NewVersion -ceq '0.12.27') {
+        if ($NewVersion -cin @('0.12.27','0.12.28')) {
             $overlayReport = Get-Content -LiteralPath (Join-Path $profile 'program-overlay.json') -Raw | ConvertFrom-Json
             foreach ($proof in @(
                 'Real named-pipe heartbeats survive a paused UI; silence and invalid peer remain rejected',
@@ -368,6 +368,17 @@ if ($drawerRelease) {
             )) {
                 if (@($overlayReport | Where-Object { $_.pass -is [bool] -and $_.pass -eq $true -and $_.name -ceq $proof }).Count -ne 1) {
                     throw 'Required 0.12.27 operation or heartbeat proof missing.'
+                }
+            }
+        }
+        if ($NewVersion -ceq '0.12.28') {
+            foreach ($proof in @(
+                'A transient minimum after detach cannot shrink the confirmed viewport of the same PID and HWND',
+                'A changed native minimum renegotiates exact bounds once without increasing website width',
+                'A replacement process and HWND do not inherit the previous window minimum width'
+            )) {
+                if (@($overlayReport | Where-Object { $_.pass -is [bool] -and $_.pass -eq $true -and $_.name -ceq $proof }).Count -ne 1) {
+                    throw 'Required 0.12.28 native minimum identity proof missing.'
                 }
             }
         }
