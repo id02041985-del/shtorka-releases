@@ -338,11 +338,13 @@ if ($Mode -eq 'candidate' -and [version]$NewVersion -ge [version]'0.12.26') {
 if ($drawerRelease) {
     $cycles = if ([version]$NewVersion -ge [version]'0.12.23') { 3 } else { 1 }
     for ($cycle = 1; $cycle -le $cycles; $cycle++) {
+        # 0.12.28 adds three minimum-width assertions AND one owned viewport,
+        # whose detach/dispose exit checkpoints add two more rows: 113+3+2=118.
         # 0.12.27 adds named heartbeat/operation-lifetime assertions to the
         # installed overlay suite. Keep a strict exact count for this version;
         # all boolean, exit, timeout and named-proof gates remain mandatory.
-        $overlayMinimum = if ($NewVersion -ceq '0.12.28') { 116 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 40 }
-        $overlayMaximum = if ($NewVersion -ceq '0.12.28') { 116 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 100 }
+        $overlayMinimum = if ($NewVersion -ceq '0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 40 }
+        $overlayMaximum = if ($NewVersion -ceq '0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 100 }
         Verify-InstalledRail '--verify-program-overlay' 'program-overlay.json' $overlayMinimum $overlayMaximum 600000 @(
             'A real click on the ordinary Programs action opens the existing application in the shared drawer',
             'Closing and reopening the drawer preserves the same modal Save dialog',
@@ -381,6 +383,9 @@ if ($drawerRelease) {
                     throw 'Required 0.12.28 native minimum identity proof missing.'
                 }
             }
+            $detached = @($overlayReport | Where-Object name -CEQ 'Program detach request completed during exit').Count
+            $disposed = @($overlayReport | Where-Object name -CEQ 'Native program viewport disposed during exit').Count
+            if ($detached -lt 1 -or $detached -ne $disposed) { throw 'Owned viewport cleanup proof mismatch.' }
         }
         Write-Host "Installed program lifecycle cycle $cycle/$cycles passed with normal panel exit0."
     }
