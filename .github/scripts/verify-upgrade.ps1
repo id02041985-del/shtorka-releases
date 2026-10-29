@@ -389,8 +389,8 @@ if ($drawerRelease) {
         # 0.12.27 adds named heartbeat/operation-lifetime assertions to the
         # installed overlay suite. Keep a strict exact count for this version;
         # all boolean, exit, timeout and named-proof gates remain mandatory.
-        $overlayMinimum = if ($NewVersion -cin @('0.12.28','0.12.29')) { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 40 }
-        $overlayMaximum = if ($NewVersion -cin @('0.12.28','0.12.29')) { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 100 }
+        $overlayMinimum = if ([version]$NewVersion -ge [version]'0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 40 }
+        $overlayMaximum = if ([version]$NewVersion -ge [version]'0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 100 }
         Verify-InstalledRail '--verify-program-overlay' 'program-overlay.json' $overlayMinimum $overlayMaximum 600000 @(
             'A real click on the ordinary Programs action opens the existing application in the shared drawer',
             'Closing and reopening the drawer preserves the same modal Save dialog',
@@ -406,7 +406,7 @@ if ($drawerRelease) {
             'Installed ChatGPT MSIX restores its ordinary window without changing its account or network mode',
             'A native pin click reattaches ChatGPT with its own exact-window restoration receipt before the broker crash'
         )
-        if ($NewVersion -cin @('0.12.27','0.12.28','0.12.29')) {
+        if ([version]$NewVersion -ge [version]'0.12.27') {
             $overlayReport = Get-Content -LiteralPath (Join-Path $profile 'program-overlay.json') -Raw | ConvertFrom-Json
             foreach ($proof in @(
                 'Real named-pipe heartbeats survive a paused UI; silence and invalid peer remain rejected',
@@ -419,7 +419,7 @@ if ($drawerRelease) {
                 }
             }
         }
-        if ($NewVersion -cin @('0.12.28','0.12.29')) {
+        if ([version]$NewVersion -ge [version]'0.12.28') {
             foreach ($proof in @(
                 'A transient minimum after detach cannot shrink the confirmed viewport of the same PID and HWND',
                 'A changed native minimum renegotiates exact bounds once without increasing website width',
@@ -432,6 +432,37 @@ if ($drawerRelease) {
             $detached = @($overlayReport | Where-Object name -CEQ 'Program detach request completed during exit').Count
             $disposed = @($overlayReport | Where-Object name -CEQ 'Native program viewport disposed during exit').Count
             if ($detached -lt 1 -or $detached -ne $disposed) { throw 'Owned viewport cleanup proof mismatch.' }
+        }
+        if ([version]$NewVersion -ge [version]'0.12.30') {
+            $viewportReports = @(Get-ChildItem -LiteralPath $profile -Directory -Filter 'viewport-*' |
+                Where-Object { $_.Name -cmatch '^viewport-[a-f0-9]{32}$' } |
+                ForEach-Object { Join-Path $_.FullName 'viewport-results.txt' } |
+                Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
+            if ($viewportReports.Count -ne $cycle) { throw 'Fresh installed viewport child proof missing.' }
+            foreach ($viewportReport in $viewportReports) {
+                $viewportRows = @(Get-Content -LiteralPath $viewportReport)
+                if ($viewportRows.Count -lt 17 -or $viewportRows.Count -gt 18 -or
+                    @($viewportRows | Where-Object { $_ -cnotmatch '^(PASS |UNVERIFIED Shell pin API unavailable: (PIN_SHELL_ERROR|VIEW_PENDING)$)' }).Count -ne 0) {
+                    throw 'Installed viewport child result contract failed.'
+                }
+                foreach ($proof in @(
+                    'PASS Wrong process start time rejects taskbar mutation',
+                    'PASS Wrong process identity rejects desktop mutation',
+                    'PASS Reproduced drawer occlusion at unchanged bounds',
+                    'PASS Occlusion repairs without moving, restarting or focusing the target',
+                    'PASS Hiding the viewport hides its target without closing its session',
+                    'PASS Reopening reuses the same HWND and broker',
+                    'PASS Normal detach completes restoration',
+                    'PASS Detach restores exact original frame and extended styles',
+                    'PASS All viewport operations preserve the synthetic application process'
+                )) {
+                    if (@($viewportRows | Where-Object { $_ -ceq $proof }).Count -ne 1) { throw 'Required installed viewport child proof missing.' }
+                }
+                if (@($viewportRows | Where-Object { $_ -cmatch '^PASS Twelve width changes converge below 250 ms' }).Count -ne 1) {
+                    throw 'Installed viewport resize proof missing.'
+                }
+            }
+            Write-Host "Installed viewport child contract passed for cycle $cycle."
         }
         Write-Host "Installed program lifecycle cycle $cycle/$cycles passed with normal panel exit0."
     }
