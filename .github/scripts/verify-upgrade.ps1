@@ -344,8 +344,29 @@ if ([version]$NewVersion -ge [version]'0.12.29') {
     }
 }
 
-Verify-InstalledRail '--verify-utility-startup' 'utility-startup.json' 13
-Verify-InstalledRail '--verify-utility-startup-restart' 'utility-startup-restart.json' 8
+# 0.12.32 removes three duplicated utility buttons. Startup checks their
+# replacements twice, restart once: 13-6=7 and 8-3=5.
+$compactRelease = [version]$NewVersion -ge [version]'0.12.32'
+$utilityChecks = if ($compactRelease) { 7 } else { 13 }
+$utilityRestartChecks = if ($compactRelease) { 5 } else { 8 }
+Verify-InstalledRail '--verify-utility-startup' 'utility-startup.json' $utilityChecks
+Verify-InstalledRail '--verify-utility-startup-restart' 'utility-startup-restart.json' $utilityRestartChecks
+if ($compactRelease) {
+    $compact = Join-Path $work 'compact-layout'
+    $checkProcess = Start-Process -FilePath $exe -ArgumentList @('--verify-compact-layout', ('"'+$compact+'"')) -PassThru -WindowStyle Hidden
+    if (!$checkProcess.WaitForExit(60000) -or $checkProcess.ExitCode -ne 0) { throw 'Installed compact layout check failed.' }
+    $compactRows = Get-Content -LiteralPath (Join-Path $compact 'layout-checks.json') -Raw | ConvertFrom-Json
+    if (@($compactRows).Count -ne 5 -or @($compactRows | Where-Object { $_.pass -isnot [bool] -or !$_.pass }).Count) {
+        throw 'Installed compact layout evidence missing or failed.'
+    }
+    $inventoryFile = Join-Path $work 'openai-inventory.json'
+    $checkProcess = Start-Process -FilePath $exe -ArgumentList @('--inspect-openai-desktop', ('"'+$inventoryFile+'"')) -PassThru -WindowStyle Hidden
+    if (!$checkProcess.WaitForExit(60000) -or $checkProcess.ExitCode -ne 0) { throw 'Installed OpenAI inventory failed.' }
+    $inventory = Get-Content -LiteralPath $inventoryFile -Raw | ConvertFrom-Json
+    if ($inventory.installed -ne $true -or $inventory.trusted -ne $true -or $inventory.readOnly -ne $true -or
+        $inventory.family -cne 'OpenAI.Codex_2p2nqsd0c76g0' -or $inventory.appId -cne 'App' -or
+        $inventory.signature -cne 'Store' -or $inventory.status -cne 'Ok') { throw 'Official OpenAI identity was not verified by installed Drape.' }
+}
 if ($Mode -eq 'candidate') {
     $env:SHTORKA_OBYEZD_TEST_PACKAGES = Split-Path $bridgeCrx -Parent
     try { Verify-InstalledRail '--verify-obyezd-bridge' 'obyezd-bridge-checks.json' 4 }
@@ -389,8 +410,8 @@ if ($drawerRelease) {
         # 0.12.27 adds named heartbeat/operation-lifetime assertions to the
         # installed overlay suite. Keep a strict exact count for this version;
         # all boolean, exit, timeout and named-proof gates remain mandatory.
-        $overlayMinimum = if ([version]$NewVersion -ge [version]'0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 40 }
-        $overlayMaximum = if ([version]$NewVersion -ge [version]'0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 100 }
+        $overlayMinimum = if ($compactRelease) { 122 } elseif ([version]$NewVersion -ge [version]'0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 40 }
+        $overlayMaximum = if ($compactRelease) { 122 } elseif ([version]$NewVersion -ge [version]'0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 100 }
         Verify-InstalledRail '--verify-program-overlay' 'program-overlay.json' $overlayMinimum $overlayMaximum 600000 @(
             'A real click on the ordinary Programs action opens the existing application in the shared drawer',
             'Closing and reopening the drawer preserves the same modal Save dialog',
@@ -417,6 +438,22 @@ if ($drawerRelease) {
                 if (@($overlayReport | Where-Object { $_.pass -is [bool] -and $_.pass -eq $true -and $_.name -ceq $proof }).Count -ne 1) {
                     throw 'Required 0.12.27 operation or heartbeat proof missing.'
                 }
+            }
+        }
+        if ($compactRelease) {
+            # Four additional assertions: native/site split, swap, expand, and
+            # repeated official package registration without card/route changes.
+            foreach ($proof in @(
+                'Mixed pane swap retains exact program and unsaved text',
+                'Program pane expands back to full height',
+                'Repeated official OpenAI addition reuses the registered AUMID without replacing existing card or route'
+            )) {
+                if (@($overlayReport | Where-Object { $_.pass -is [bool] -and $_.pass -eq $true -and $_.name -ceq $proof }).Count -ne 1) {
+                    throw 'Required compact/OpenAI desktop proof missing.'
+                }
+            }
+            if (@($overlayReport | Where-Object { $_.pass -eq $true -and $_.name.StartsWith('Website above program uses same native host and original five DIP divider') }).Count -ne 1) {
+                throw 'Required mixed pane native bounds/divider proof missing.'
             }
         }
         if ([version]$NewVersion -ge [version]'0.12.28') {
