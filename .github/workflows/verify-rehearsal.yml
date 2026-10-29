@@ -40,6 +40,32 @@ jobs:
             Write-Host ('::error title=Candidate verification failure::' + $reason)
             throw 'Candidate verification failed; draft remains unpublished.'
           }
+      - name: Stage synthetic Obyezd UI and viewport evidence on one drive
+        if: always()
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'drape-installed-evidence'
+          New-Item -ItemType Directory -Path $evidence -Force | Out-Null
+          $profile = Join-Path $env:LOCALAPPDATA 'Shtorka'
+          # Keep the allowlist narrow: this is a disposable synthetic profile.
+          # upload-artifact cannot find a common root across the C: and D: drives.
+          foreach ($pattern in @('obyezd-refresh*.json', 'obyezd-popup-windows.png',
+              'main-frame-*.json', 'main-frame-*.png', 'program-overlay.json',
+              'program-bounds-observation.json', 'program-msix-restore-observation.json')) {
+            if (Test-Path -LiteralPath $profile) {
+              Get-ChildItem -LiteralPath $profile -Filter $pattern -File |
+                Copy-Item -Destination $evidence
+            }
+          }
+          $policyIndex = 0
+          foreach ($directory in @(Get-ChildItem -LiteralPath $env:RUNNER_TEMP -Filter 'drape-policy-read-*' -Directory)) {
+            $report = Join-Path $directory.FullName 'policy-browser-checks.json'
+            if (Test-Path -LiteralPath $report) {
+              Copy-Item -LiteralPath $report -Destination (Join-Path $evidence ("policy-browser-checks-$policyIndex.json"))
+              $policyIndex++
+            }
+          }
       - name: Retain synthetic Obyezd UI and viewport evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -47,15 +73,7 @@ jobs:
           name: obyezd-refresh-windows-evidence
           if-no-files-found: ignore
           retention-days: 14
-          path: |
-            ~/AppData/Local/Shtorka/obyezd-refresh*.json
-            ~/AppData/Local/Shtorka/obyezd-popup-windows.png
-            ~/AppData/Local/Shtorka/main-frame-*.json
-            ~/AppData/Local/Shtorka/main-frame-*.png
-            ~/AppData/Local/Shtorka/program-overlay.json
-            ~/AppData/Local/Shtorka/program-bounds-observation.json
-            ~/AppData/Local/Shtorka/program-msix-restore-observation.json
-            ${{ runner.temp }}/drape-policy-read-*/policy-browser-checks.json
+          path: ${{ runner.temp }}/drape-installed-evidence/
 
   probe-draft:
     if: github.repository == 'id02041985-del/shtorka-releases' && github.event.action == 'drape-draft-probe'
