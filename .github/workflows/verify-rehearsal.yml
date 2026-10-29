@@ -58,6 +58,15 @@ jobs:
                 Copy-Item -Destination $evidence
             }
           }
+          $viewportIndex = 0
+          foreach ($directory in @(Get-ChildItem -LiteralPath $profile -Directory -Filter 'viewport-*' -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -cmatch '^viewport-[a-f0-9]{32}$' })) {
+            $report = Join-Path $directory.FullName 'viewport-results.txt'
+            if (Test-Path -LiteralPath $report) {
+              Copy-Item -LiteralPath $report -Destination (Join-Path $evidence ("program-viewport-$viewportIndex.txt"))
+              $viewportIndex++
+            }
+          }
           $policyIndex = 0
           foreach ($directory in @(Get-ChildItem -LiteralPath $env:RUNNER_TEMP -Filter 'drape-policy-read-*' -Directory)) {
             $report = Join-Path $directory.FullName 'policy-browser-checks.json'
