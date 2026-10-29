@@ -52,6 +52,10 @@ jobs:
             ~/AppData/Local/Shtorka/obyezd-popup-windows.png
             ~/AppData/Local/Shtorka/main-frame-*.json
             ~/AppData/Local/Shtorka/main-frame-*.png
+            ~/AppData/Local/Shtorka/program-overlay.json
+            ~/AppData/Local/Shtorka/program-bounds-observation.json
+            ~/AppData/Local/Shtorka/program-msix-restore-observation.json
+            ${{ runner.temp }}/drape-policy-read-*/policy-browser-checks.json
 
   probe-draft:
     if: github.repository == 'id02041985-del/shtorka-releases' && github.event.action == 'drape-draft-probe'
