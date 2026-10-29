@@ -350,13 +350,25 @@ if ($Mode -eq 'candidate') {
 if ($Mode -eq 'candidate' -and [version]$NewVersion -ge [version]'0.12.26') {
     $env:SHTORKA_OBYEZD_TEST_PACKAGES = Split-Path $bridgeCrx -Parent
     try {
-        Verify-InstalledRail '--verify-obyezd-refresh' 'obyezd-refresh.json' 32 32 180000 @(
+        $refreshChecks = if ([version]$NewVersion -ge [version]'0.12.29') { 36 } else { 32 }
+        Verify-InstalledRail '--verify-obyezd-refresh' 'obyezd-refresh.json' $refreshChecks $refreshChecks 180000 @(
             'Real Update button installs the newer signed official candidate',
             'Signed extension update preserves account bytes, rules and manual OFF',
             'Actual keyboard input saves a CurrentUser DPAPI account and clears the password field',
             'Production reconnect coordinator retries the saved account after its deadline using only the injected transport',
             'An injected helper authentication error pauses automatic retries even after resume'
         )
+        if ([version]$NewVersion -ge [version]'0.12.29') {
+            $reconnectRows = @(Get-Content -LiteralPath (Join-Path $profile 'obyezd-refresh.json') -Raw | ConvertFrom-Json)
+            foreach ($reason in @('ENDPOINT_PATH_OWNED_ROUTE','ENDPOINT_PATH_EXTERNAL_ROUTE')) {
+                foreach ($proof in @(
+                    ('Endpoint route failure stays blocked during backoff: ' + $reason),
+                    ('Production coordinator starts a new saved-account attempt after endpoint route loss, without granting readiness: ' + $reason)
+                )) {
+                    if (@($reconnectRows | Where-Object { $_.pass -eq $true -and $_.name -ceq $proof }).Count -ne 1) { throw 'Required endpoint-route recovery proof missing.' }
+                }
+            }
+        }
         $frame = Get-Content -LiteralPath (Join-Path $profile 'main-frame-drawer-metrics.json') -Raw | ConvertFrom-Json
         Write-Host "Updated actual drawer: left=$($frame.leftDip)DIP; bottom=$($frame.bottomDip)DIP; DPI=$($frame.dpi)."
         foreach ($viewportCase in (Get-Content -LiteralPath (Join-Path $profile 'main-frame-metrics.json') -Raw | ConvertFrom-Json)) {
