@@ -310,6 +310,36 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
     }
 }
 
+if ([version]$NewVersion -ge [version]'0.12.29') {
+    # This isolated entry point never starts panel/profile recovery. Require a new
+    # empty profile and a fresh proof from the exact installed candidate.
+    $policyRoot = Join-Path $env:RUNNER_TEMP ('drape-policy-read-' + [guid]::NewGuid().ToString('N'))
+    $policyProcess = Start-Process -FilePath $exe -WorkingDirectory $appDir -ArgumentList @(
+        '--verify-obyezd-policy-read','--data-dir',('"' + $policyRoot + '"')
+    ) -PassThru
+    try {
+        if (!$policyProcess.WaitForExit(45000)) { throw 'Installed real WebView policy-read fixture timed out.' }
+        $policyReport = Join-Path $policyRoot 'policy-browser-checks.json'
+        if ($policyProcess.ExitCode -ne 0 -or !(Test-Path -LiteralPath $policyReport)) { throw 'Installed real WebView policy-read fixture failed.' }
+        $policyRows = @(Get-Content -LiteralPath $policyReport -Raw | ConvertFrom-Json)
+        if ($policyRows.Count -ne 10 -or @($policyRows | Where-Object { $_.pass -isnot [bool] -or !$_.pass }).Count) { throw 'Installed policy-read proof has a missing or failed check.' }
+        foreach ($label in @(
+            'Real delayed browser answer times out without readiness',
+            'Late valid CDP completion cannot upgrade the timed-out decision',
+            'Fresh independent browser read can establish readiness',
+            'Confirmed real browser policy takeover stays fatal',
+            'Actual CDP script failure remains fatal',
+            'Browser exception text does not enter the diagnostic'
+        )) {
+            if (@($policyRows | Where-Object label -CEQ $label).Count -ne 1) { throw 'Required installed policy-read proof missing.' }
+        }
+        '10 real WebView/CDP policy-read checks passed in the exact installed payload.' |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+    } finally {
+        if (!$policyProcess.HasExited) { Stop-Process -Id $policyProcess.Id -Force -ErrorAction SilentlyContinue }
+    }
+}
+
 Verify-InstalledRail '--verify-utility-startup' 'utility-startup.json' 13
 Verify-InstalledRail '--verify-utility-startup-restart' 'utility-startup-restart.json' 8
 if ($Mode -eq 'candidate') {
@@ -343,8 +373,8 @@ if ($drawerRelease) {
         # 0.12.27 adds named heartbeat/operation-lifetime assertions to the
         # installed overlay suite. Keep a strict exact count for this version;
         # all boolean, exit, timeout and named-proof gates remain mandatory.
-        $overlayMinimum = if ($NewVersion -ceq '0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 40 }
-        $overlayMaximum = if ($NewVersion -ceq '0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 100 }
+        $overlayMinimum = if ($NewVersion -cin @('0.12.28','0.12.29')) { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 40 }
+        $overlayMaximum = if ($NewVersion -cin @('0.12.28','0.12.29')) { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 100 }
         Verify-InstalledRail '--verify-program-overlay' 'program-overlay.json' $overlayMinimum $overlayMaximum 600000 @(
             'A real click on the ordinary Programs action opens the existing application in the shared drawer',
             'Closing and reopening the drawer preserves the same modal Save dialog',
@@ -360,7 +390,7 @@ if ($drawerRelease) {
             'Installed ChatGPT MSIX restores its ordinary window without changing its account or network mode',
             'A native pin click reattaches ChatGPT with its own exact-window restoration receipt before the broker crash'
         )
-        if ($NewVersion -cin @('0.12.27','0.12.28')) {
+        if ($NewVersion -cin @('0.12.27','0.12.28','0.12.29')) {
             $overlayReport = Get-Content -LiteralPath (Join-Path $profile 'program-overlay.json') -Raw | ConvertFrom-Json
             foreach ($proof in @(
                 'Real named-pipe heartbeats survive a paused UI; silence and invalid peer remain rejected',
@@ -373,7 +403,7 @@ if ($drawerRelease) {
                 }
             }
         }
-        if ($NewVersion -ceq '0.12.28') {
+        if ($NewVersion -cin @('0.12.28','0.12.29')) {
             foreach ($proof in @(
                 'A transient minimum after detach cannot shrink the confirmed viewport of the same PID and HWND',
                 'A changed native minimum renegotiates exact bounds once without increasing website width',
