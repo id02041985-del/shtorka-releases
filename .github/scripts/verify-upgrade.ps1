@@ -321,8 +321,12 @@ if ([version]$NewVersion -ge [version]'0.12.29') {
         if (!$policyProcess.WaitForExit(45000)) { throw 'Installed real WebView policy-read fixture timed out.' }
         $policyReport = Join-Path $policyRoot 'policy-browser-checks.json'
         if ($policyProcess.ExitCode -ne 0 -or !(Test-Path -LiteralPath $policyReport)) { throw 'Installed real WebView policy-read fixture failed.' }
-        $policyRows = @(Get-Content -LiteralPath $policyReport -Raw | ConvertFrom-Json)
-        if ($policyRows.Count -ne 10 -or @($policyRows | Where-Object { $_.pass -isnot [bool] -or !$_.pass }).Count) { throw 'Installed policy-read proof has a missing or failed check.' }
+        $policyRows = @(Get-Content -LiteralPath $policyReport -Raw | ConvertFrom-Json | ForEach-Object { $_ })
+        if ($policyRows.Count -ne 10 -or @($policyRows | Where-Object { $_.pass -isnot [bool] -or !$_.pass }).Count) {
+            Write-Host ('Policy proof count=' + $policyRows.Count)
+            $policyRows | Select-Object pass,label | ConvertTo-Json -Depth 3 | Write-Host
+            throw 'Installed policy-read proof has a missing or failed check.'
+        }
         foreach ($label in @(
             'Real delayed browser answer times out without readiness',
             'Late valid CDP completion cannot upgrade the timed-out decision',
@@ -359,7 +363,7 @@ if ($Mode -eq 'candidate' -and [version]$NewVersion -ge [version]'0.12.26') {
             'An injected helper authentication error pauses automatic retries even after resume'
         )
         if ([version]$NewVersion -ge [version]'0.12.29') {
-            $reconnectRows = @(Get-Content -LiteralPath (Join-Path $profile 'obyezd-refresh.json') -Raw | ConvertFrom-Json)
+            $reconnectRows = @(Get-Content -LiteralPath (Join-Path $profile 'obyezd-refresh.json') -Raw | ConvertFrom-Json | ForEach-Object { $_ })
             foreach ($reason in @('ENDPOINT_PATH_OWNED_ROUTE','ENDPOINT_PATH_EXTERNAL_ROUTE')) {
                 foreach ($proof in @(
                     ('Endpoint route failure stays blocked during backoff: ' + $reason),
