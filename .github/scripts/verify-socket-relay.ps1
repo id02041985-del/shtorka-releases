@@ -13,7 +13,10 @@ if(Test-Path -LiteralPath $work){throw 'Fresh fixture required'}
 $null=New-Item -ItemType Directory -Path $work
 $api='https://api.github.com/repos/id02041985-del/shtorka-releases'
 $headers=@{Authorization="Bearer $env:GITHUB_TOKEN";Accept='application/vnd.github+json'}
-$draft=Invoke-RestMethod "$api/releases/tags/$($request.tag)" -Headers $headers
+$releases=Invoke-RestMethod "$api/releases?per_page=100" -Headers $headers
+$drafts=@($releases|Where-Object tag_name -CEQ $request.tag)
+if($drafts.Count -ne 1){throw 'Unique unpublished review draft required'}
+$draft=$drafts[0]
 $asset=@($draft.assets|Where-Object name -CEQ 'socket-relay-fixture.zip')
 if(!$draft.draft -or $draft.tag_name -cne $request.tag -or $asset.Count -ne 1 -or
     $asset[0].size -ne $request.bundleBytes -or $asset[0].digest -cne ('sha256:'+$request.bundleSha)){throw 'Exact unpublished binary asset required'}
