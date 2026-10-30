@@ -51,6 +51,7 @@ foreach($name in @('GH_TOKEN','ACTIONS_RUNTIME_TOKEN','ACTIONS_ID_TOKEN_REQUEST_
 }
 $headers=$null
 function Run-Checked([string]$File,[string[]]$Arguments,[int]$Timeout=180){
+    if(!(Test-Path -LiteralPath $File -PathType Leaf)){throw ('Required disposable binary missing: '+[IO.Path]::GetFileName($File))}
     $log=Join-Path $work ([guid]::NewGuid().ToString('N')+'.out.txt')
     $err=$log+'.err.txt'
     $process=Start-Process -FilePath $File -ArgumentList $Arguments -PassThru -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError $err
@@ -61,29 +62,44 @@ function Run-Checked([string]$File,[string[]]$Arguments,[int]$Timeout=180){
     if($output){Write-Output $output}
     if($process.ExitCode -ne 0){throw ('Disposable binary failed: '+[IO.Path]::GetFileName($File)+' exit '+$process.ExitCode)}
 }
-$appDir=Join-Path $env:LOCALAPPDATA 'Programs/Shtorka'
-$app=Join-Path $appDir 'Shtorka.exe'
+function Find-InstalledApp([string]$Version){
+    $key='HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{A0685854-23AD-4E53-94CE-83EE616048BE}_is1'
+    $registration=Get-ItemProperty -LiteralPath $key -ErrorAction Stop
+    $directory=[IO.Path]::GetFullPath($registration.InstallLocation.TrimEnd('\'))
+    $path=Join-Path $directory 'Shtorka.exe'
+    if(!(Test-Path -LiteralPath $path -PathType Leaf) -or
+       [Diagnostics.FileVersionInfo]::GetVersionInfo($path).ProductVersion -notlike ($Version+'*')){throw 'Actual installed app registration/version mismatch'}
+    return $path
+}
 $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $component=Join-Path $env:ProgramFiles ('ShtorkaOffice/'+$sid)
 $installArgs=@('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOOFFICECOMPONENT=1','/TASKS=""')
 # First verify the current issued native15 -> candidate16 path.
 Run-Checked $oldPublic $installArgs
+$app=Find-InstalledApp '0.12.32'
 Run-Checked $app @('--install-office-component')
 if([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $component 'Shtorka.Office.exe')).ProductVersion -notlike '0.12.15*'){throw 'Actual previous native15 was not installed'}
 Run-Checked $setup ($installArgs+@('/UPDATE=1'))
+$app=Find-InstalledApp '0.12.33'
 Run-Checked $app @('--install-office-component')
 if([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $component 'Shtorka.Office.exe')).ProductVersion -notlike '0.12.16*'){throw 'Native16 upgrade was not installed'}
 Run-Checked (Join-Path $component 'Shtorka.Office.exe') @('--self-test')
 Run-Checked $app @('--verify-office-helper-ipc')
+$nativeIdentity=@{helperSha256=(Get-FileHash -LiteralPath (Join-Path $component 'Shtorka.Office.exe')).Hash.ToLowerInvariant();
+    brokerSha256=(Get-FileHash -LiteralPath (Join-Path $component 'Shtorka.Obyezd.Service.exe')).Hash.ToLowerInvariant();
+    manifestSha256=(Get-FileHash -LiteralPath (Join-Path $component 'runtime-manifest.json')).Hash.ToLowerInvariant()}
+$appDir=Split-Path -Parent $app
 Run-Checked (Join-Path $appDir 'unins000.exe') @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART')
 # The compiled production regression fixture requires the actual previous
 # private0.11.7 component, then drives exact owned kernel and recovery cases.
 Run-Checked $oldPrivate $installArgs
+$app=Find-InstalledApp '0.11.7'
 Run-Checked $app @('--install-office-component')
 if([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $component 'Shtorka.Office.exe')).ProductVersion -notlike '0.11.7*'){throw 'Actual legacy helper required'}
 Run-Checked $fixture @('--app',('"'+(Join-Path $payload 'Shtorka.exe')+'"'),'--installer',('"'+$setup+'"')) 300
 $proof=[ordered]@{schema=1;passed=$true;nonce=$request.nonce;source=$request.source;version='0.12.33';nativeVersion='0.12.16';
     installerSha256=$request.setupSha;componentSha256=$request.componentSha;bundleSha256=$request.bundleSha;
+    helperSha256=$nativeIdentity.helperSha256;brokerSha256=$nativeIdentity.brokerSha256;manifestSha256=$nativeIdentity.manifestSha256;
     currentNativeUpgradeTested=$true;legacyOwnedRecoveryTested=$true;coldDesktopActivationTested=$false;userAccountUsed=$false;liveOfficeAccountTested=$false;
     runner=$env:RUNNER_ENVIRONMENT;publicFeedChanged=$false;distributionAllowed=$false}
 $json=$proof|ConvertTo-Json -Compress
