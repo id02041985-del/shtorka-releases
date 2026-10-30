@@ -88,6 +88,22 @@ Run-Checked $app @('--verify-office-helper-ipc')
 $nativeIdentity=@{helperSha256=(Get-FileHash -LiteralPath (Join-Path $component 'Shtorka.Office.exe')).Hash.ToLowerInvariant();
     brokerSha256=(Get-FileHash -LiteralPath (Join-Path $component 'Shtorka.Obyezd.Service.exe')).Hash.ToLowerInvariant();
     manifestSha256=(Get-FileHash -LiteralPath (Join-Path $component 'runtime-manifest.json')).Hash.ToLowerInvariant()}
+$coldPassed=$false
+if($request.coldStart -eq $true){
+    $ps5=Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/powershell.exe'
+    Run-Checked $ps5 @('-NoProfile','-NonInteractive','-File',('"'+(Join-Path $PSScriptRoot 'prepare-chatgpt-fixture.ps1')+'"')) 600
+    foreach($name in @('Drape.NativeColdFixture.exe','Drape.NativeColdFixture.dll','Drape.NativeColdFixture.deps.json','Drape.NativeColdFixture.runtimeconfig.json')){
+        [IO.File]::Copy((Join-Path $work ('bundle/cold-fixture/'+$name)),(Join-Path $payload $name),$false)
+    }
+    $coldReport=Join-Path $work 'native-cold-report.json'
+    try{Run-Checked (Join-Path $payload 'Drape.NativeColdFixture.exe') @(('"'+$coldReport+'"')) 300}
+    finally{if(Test-Path -LiteralPath $coldReport){Get-Content -LiteralPath $coldReport -Raw|Write-Output}}
+    $cold=Get-Content -LiteralPath $coldReport -Raw|ConvertFrom-Json
+    if(!$cold.passed -or !$cold.cacheInitiallyEmpty -or !$cold.preparedBeforeActivation -or !$cold.signedGuiStarted -or
+       !$cold.exactPreparedNativeCoreStarted -or $cold.loopbackConnectRequests -lt 1 -or $cold.directExternalTcp -ne 0 -or
+       $cold.authenticatedAccountUsed -or $cold.remoteOfficeTested){throw 'Actual protected cold desktop activation did not pass'}
+    $coldPassed=$true
+}
 $appDir=Split-Path -Parent $app
 Run-Checked (Join-Path $appDir 'unins000.exe') @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART')
 # The compiled production regression fixture requires the actual previous
@@ -100,7 +116,7 @@ Run-Checked $fixture @('--app',('"'+(Join-Path $payload 'Shtorka.exe')+'"'),'--i
 $proof=[ordered]@{schema=1;passed=$true;nonce=$request.nonce;source=$request.source;version='0.12.33';nativeVersion='0.12.16';
     installerSha256=$request.setupSha;componentSha256=$request.componentSha;bundleSha256=$request.bundleSha;
     helperSha256=$nativeIdentity.helperSha256;brokerSha256=$nativeIdentity.brokerSha256;manifestSha256=$nativeIdentity.manifestSha256;
-    currentNativeUpgradeTested=$true;legacyOwnedRecoveryTested=$true;coldDesktopActivationTested=$false;userAccountUsed=$false;liveOfficeAccountTested=$false;
+    currentNativeUpgradeTested=$true;legacyOwnedRecoveryTested=$true;coldDesktopActivationTested=$coldPassed;userAccountUsed=$false;liveOfficeAccountTested=$false;
     runner=$env:RUNNER_ENVIRONMENT;publicFeedChanged=$false;distributionAllowed=$false}
 $json=$proof|ConvertTo-Json -Compress
 Write-Output ('NATIVE_REVIEW_PROOF '+$json)
