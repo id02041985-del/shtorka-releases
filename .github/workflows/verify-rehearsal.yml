@@ -1,14 +1,31 @@
 name: Public installed-upgrade verification
-run-name: ${{ format('Drape {0} {1}', github.event.action == 'drape-native-review' && 'native review' || github.event.action == 'drape-draft-probe' && 'draft probe' || github.event.action == 'drape-overlay-test' && 'overlay' || 'candidate', github.event.client_payload.nonce) }}
+run-name: ${{ format('Drape {0} {1}', github.event.action == 'drape-socket-relay-review' && 'socket relay' || github.event.action == 'drape-native-review' && 'native review' || github.event.action == 'drape-draft-probe' && 'draft probe' || github.event.action == 'drape-overlay-test' && 'overlay' || 'candidate', github.event.client_payload.nonce) }}
 
 on:
   repository_dispatch:
-    types: [drape-candidate, drape-draft-probe, drape-overlay-test, drape-native-review]
+    types: [drape-candidate, drape-draft-probe, drape-overlay-test, drape-native-review, drape-socket-relay-review]
 
 permissions:
   contents: read
 
 jobs:
+  socket-relay:
+    if: github.repository == 'id02041985-del/shtorka-releases' && github.event.action == 'drape-socket-relay-review'
+    runs-on: windows-2022
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Review native relay and signed GUI on disposable Windows
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DRAPE_SOCKET_REQUEST: ${{ toJSON(github.event.client_payload) }}
+        run: ./.github/scripts/verify-socket-relay.ps1
+
   verify:
     if: github.repository == 'id02041985-del/shtorka-releases' && (github.event.action == 'drape-candidate' || github.event.action == 'drape-native-review')
     runs-on: windows-2022
