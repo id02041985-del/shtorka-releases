@@ -6,7 +6,7 @@ if($env:GITHUB_REPOSITORY -cne 'id02041985-del/shtorka-releases' -or $env:RUNNER
 }
 $request=$env:DRAPE_NATIVE_REQUEST|ConvertFrom-Json
 if($request.nonce -notmatch '^[a-f0-9]{32}$' -or $request.source -notmatch '^[a-f0-9]{40}$' -or
-   $request.tag -cnotmatch '^native-review-[a-f0-9]{12}-\d+$' -or
+   $request.tag -cnotmatch '^native-review-[a-f0-9]{12}-\d+(?:-\d+)?$' -or
    $request.setupSha -notmatch '^[a-f0-9]{64}$' -or $request.bundleSha -notmatch '^[a-f0-9]{64}$' -or
    $request.componentSha -notmatch '^[a-f0-9]{64}$' -or $request.setupBytes -lt 1000000 -or $request.bundleBytes -lt 1000000){throw 'Invalid review request'}
 $work=Join-Path $env:RUNNER_TEMP ('drape-native-'+$request.nonce)
@@ -54,7 +54,13 @@ function Run-Checked([string]$File,[string[]]$Arguments,[int]$Timeout=180){
     if(!(Test-Path -LiteralPath $File -PathType Leaf)){throw ('Required disposable binary missing: '+[IO.Path]::GetFileName($File))}
     $log=Join-Path $work ([guid]::NewGuid().ToString('N')+'.out.txt')
     $err=$log+'.err.txt'
-    $process=Start-Process -FilePath $File -ArgumentList $Arguments -PassThru -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError $err
+    $start=@{FilePath=$File;ArgumentList=$Arguments;PassThru=$true;WindowStyle='Hidden';RedirectStandardOutput=$log;RedirectStandardError=$err}
+    if([IO.Path]::GetFullPath($File) -ieq (Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/powershell.exe')){
+        # A PS7 caller exports its incompatible module directory. The vendor
+        # registration fixture deliberately uses inbox PS5 Appx/DISM modules.
+        $start.Environment=@{PSModulePath=(Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/Modules')}
+    }
+    $process=Start-Process @start
     if(!$process.WaitForExit($Timeout*1000)){throw 'Bounded disposable binary timed out'}
     $output=Get-Content -LiteralPath $log,$err -Raw -ErrorAction SilentlyContinue|Out-String
     if($output -match 'fixture-opaque-password|fixture-secret-should-not-be-logged'){throw 'Synthetic secret emitted by fixture'}
