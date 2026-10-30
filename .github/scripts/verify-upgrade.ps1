@@ -356,8 +356,36 @@ if ($compactRelease) {
     $checkProcess = Start-Process -FilePath $exe -ArgumentList @('--verify-compact-layout', ('"'+$compact+'"')) -PassThru -WindowStyle Hidden
     if (!$checkProcess.WaitForExit(60000) -or $checkProcess.ExitCode -ne 0) { throw 'Installed compact layout check failed.' }
     $compactRows = Get-Content -LiteralPath (Join-Path $compact 'layout-checks.json') -Raw | ConvertFrom-Json
-    if (@($compactRows).Count -ne 5 -or @($compactRows | Where-Object { $_.pass -isnot [bool] -or !$_.pass }).Count) {
+    # Native recovery/resize release adds four cover and six vector-gear
+    # assertions to the original five compact checks. Keep an exact count and
+    # require each named proof; never accept extra/duplicate rows as success.
+    $compactExpected = if ([version]$NewVersion -ge [version]'0.12.33') { 15 } else { 5 }
+    $compactFailed = @($compactRows | Where-Object { $_.pass -isnot [bool] -or !$_.pass })
+    Write-Host "Installed compact layout: expected=$compactExpected; results=$(@($compactRows).Count); failed=$($compactFailed.Count); exit=$($checkProcess.ExitCode)."
+    if (@($compactRows).Count -ne $compactExpected -or $compactFailed.Count) {
         throw 'Installed compact layout evidence missing or failed.'
+    }
+    $compactNames = @(
+        '16 DIP icon and ring fit centered in 32 DIP rail at 96 DPI',
+        '16 DIP icon and ring fit centered in 32 DIP rail at 120 DPI',
+        '16 DIP icon and ring fit centered in 32 DIP rail at 144 DPI',
+        '16 DIP icon and ring fit centered in 32 DIP rail at 192 DPI',
+        'Settings toggle template renders within a normal settings card'
+    )
+    if ([version]$NewVersion -ge [version]'0.12.33') {
+        foreach ($theme in @('light','dark')) {
+            foreach ($size in @('320x600','700x300')) {
+                $compactNames += ('Resize cover has a solid ' + $theme + ' background and a centered undistorted logo at ' + $size)
+            }
+            foreach ($pixels in @(17,24,48)) {
+                $compactNames += ('Vector gear retains its circular center at ' + $pixels + ' pixels in ' + $theme + ' theme')
+            }
+        }
+    }
+    foreach ($name in $compactNames) {
+        if (@($compactRows | Where-Object { $_.name -ceq $name -and $_.pass -eq $true }).Count -ne 1) {
+            throw 'Required unique installed compact/resize/gear proof missing.'
+        }
     }
     $inventoryFile = Join-Path $work 'openai-inventory.json'
     $checkProcess = Start-Process -FilePath $exe -ArgumentList @('--inspect-openai-desktop', ('"'+$inventoryFile+'"')) -PassThru -WindowStyle Hidden
