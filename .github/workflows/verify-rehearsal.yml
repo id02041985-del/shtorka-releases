@@ -1,16 +1,16 @@
 name: Public installed-upgrade verification
-run-name: ${{ format('Drape {0} {1}', github.event.action == 'drape-draft-probe' && 'draft probe' || github.event.action == 'drape-overlay-test' && 'overlay' || 'candidate', github.event.client_payload.nonce) }}
+run-name: ${{ format('Drape {0} {1}', github.event.action == 'drape-native-review' && 'native review' || github.event.action == 'drape-draft-probe' && 'draft probe' || github.event.action == 'drape-overlay-test' && 'overlay' || 'candidate', github.event.client_payload.nonce) }}
 
 on:
   repository_dispatch:
-    types: [drape-candidate, drape-draft-probe, drape-overlay-test]
+    types: [drape-candidate, drape-draft-probe, drape-overlay-test, drape-native-review]
 
 permissions:
   contents: read
 
 jobs:
   verify:
-    if: github.repository == 'id02041985-del/shtorka-releases' && github.event.action == 'drape-candidate'
+    if: github.repository == 'id02041985-del/shtorka-releases' && (github.event.action == 'drape-candidate' || github.event.action == 'drape-native-review')
     runs-on: windows-2022
     timeout-minutes: 35
     permissions:
@@ -20,6 +20,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Check unpublished candidate against previous public installer
+        if: github.event.action == 'drape-candidate'
         shell: powershell
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -40,6 +41,13 @@ jobs:
             Write-Host ('::error title=Candidate verification failure::' + $reason)
             throw 'Candidate verification failed; draft remains unpublished.'
           }
+      - name: Verify binary-only native upgrade on disposable Windows
+        if: github.event.action == 'drape-native-review'
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DRAPE_NATIVE_REQUEST: ${{ toJSON(github.event.client_payload) }}
+        run: ./.github/scripts/verify-native.ps1
       - name: Stage synthetic Obyezd UI and viewport evidence on one drive
         if: always()
         shell: powershell
