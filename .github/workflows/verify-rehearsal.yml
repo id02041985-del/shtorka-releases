@@ -93,6 +93,13 @@ jobs:
             }
           }
           $policyIndex = 0
+          foreach ($directory in @(Get-ChildItem -LiteralPath $env:RUNNER_TEMP -Filter 'drape-package-lease-*' -Directory |
+              Where-Object { $_.Name -cmatch '^drape-package-lease-[a-f0-9]{32}$' })) {
+            $report = Join-Path $directory.FullName 'package-recovery.json'
+            if (Test-Path -LiteralPath $report) {
+              Copy-Item -LiteralPath $report -Destination (Join-Path $evidence ("package-recovery-$($directory.Name).json"))
+            }
+          }
           foreach ($directory in @(Get-ChildItem -LiteralPath $env:RUNNER_TEMP -Filter 'drape-policy-read-*' -Directory)) {
             $report = Join-Path $directory.FullName 'policy-browser-checks.json'
             if (Test-Path -LiteralPath $report) {

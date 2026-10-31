@@ -395,6 +395,41 @@ if ($compactRelease) {
         $inventory.family -cne 'OpenAI.Codex_2p2nqsd0c76g0' -or $inventory.appId -cne 'App' -or
         $inventory.signature -cne 'Store' -or $inventory.status -cne 'Ok') { throw 'Official OpenAI identity was not verified by installed Drape.' }
 }
+if ([version]$NewVersion -ge [version]'0.12.36') {
+    # Require positive recovery from the exact installed payload in a disposable
+    # user context with the real signed package registered. Session-0 denial
+    # on the private home service is a separate fail-closed check, never a pass here.
+    $packageRoot = Join-Path $env:RUNNER_TEMP ('drape-package-lease-' + [guid]::NewGuid().ToString('N'))
+    $packageProcess = Start-Process -FilePath $exe -WorkingDirectory $appDir -ArgumentList @(
+        '--verify-package-lease', ('"' + $packageRoot + '"')
+    ) -WindowStyle Hidden -PassThru
+    try {
+        if (!$packageProcess.WaitForExit(30000)) { throw 'Installed package recovery fixture timed out.' }
+        $packageReport = Join-Path $packageRoot 'package-recovery.json'
+        if ($packageProcess.ExitCode -ne 0 -or !(Test-Path -LiteralPath $packageReport)) {
+            if (Test-Path -LiteralPath $packageReport) {
+                $failure = Get-Content -LiteralPath $packageReport -Raw | ConvertFrom-Json
+                Write-Host "Package recovery stage=$($failure.stage); exception=$($failure.exception); hresult=$($failure.hresult)."
+            }
+            throw 'Installed positive package recovery check failed.'
+        }
+        $packageProof = Get-Content -LiteralPath $packageReport -Raw | ConvertFrom-Json
+        if ($packageProof.schema -ne 1 -or $packageProof.version -cne ($NewVersion + '.0') -or
+            $packageProof.applicationLaunched -isnot [bool] -or $packageProof.applicationLaunched -ne $false -or
+            $packageProof.currentPackageChanged -isnot [bool] -or $packageProof.currentPackageChanged -ne $false) {
+            throw 'Installed package recovery proof identity or mutation contract mismatch.'
+        }
+        foreach ($property in @('passed','obsoleteLeaseRecovered','unarmedLeaseRecovered','accessErrorRejected',
+            'registeredPackageTested','registeredPackageErrorRejected','packageChangeRejected')) {
+            if ($packageProof.$property -isnot [bool] -or $packageProof.$property -ne $true) {
+                throw "Installed package recovery proof failed: $property"
+            }
+        }
+        Write-Host 'Installed positive package recovery and registered-package/access guards passed; no application launched.'
+    } finally {
+        if (!$packageProcess.HasExited) { Stop-Process -Id $packageProcess.Id -Force -ErrorAction SilentlyContinue }
+    }
+}
 if ($Mode -eq 'candidate') {
     $env:SHTORKA_OBYEZD_TEST_PACKAGES = Split-Path $bridgeCrx -Parent
     try { Verify-InstalledRail '--verify-obyezd-bridge' 'obyezd-bridge-checks.json' 4 }
