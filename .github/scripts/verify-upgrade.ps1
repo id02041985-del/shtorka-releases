@@ -438,7 +438,7 @@ if ($Mode -eq 'candidate') {
 if ($Mode -eq 'candidate' -and [version]$NewVersion -ge [version]'0.12.26') {
     $env:SHTORKA_OBYEZD_TEST_PACKAGES = Split-Path $bridgeCrx -Parent
     try {
-        $refreshChecks = if ([version]$NewVersion -ge [version]'0.12.29') { 36 } else { 32 }
+        $refreshChecks = if ([version]$NewVersion -ge [version]'0.12.37') { 38 } elseif ([version]$NewVersion -ge [version]'0.12.29') { 36 } else { 32 }
         Verify-InstalledRail '--verify-obyezd-refresh' 'obyezd-refresh.json' $refreshChecks $refreshChecks 180000 @(
             'Real Update button installs the newer signed official candidate',
             'Signed extension update preserves account bytes, rules and manual OFF',
