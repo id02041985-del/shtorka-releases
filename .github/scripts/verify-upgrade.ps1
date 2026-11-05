@@ -448,12 +448,18 @@ if ($Mode -eq 'candidate' -and [version]$NewVersion -ge [version]'0.12.26') {
         )
         if ([version]$NewVersion -ge [version]'0.12.29') {
             $reconnectRows = @(Get-Content -LiteralPath (Join-Path $profile 'obyezd-refresh.json') -Raw | ConvertFrom-Json | ForEach-Object { $_ })
-            foreach ($reason in @('ENDPOINT_PATH_OWNED_ROUTE','ENDPOINT_PATH_EXTERNAL_ROUTE')) {
-                foreach ($proof in @(
+            $reasons = @('ENDPOINT_PATH_OWNED_ROUTE','ENDPOINT_PATH_EXTERNAL_ROUTE')
+            if ([version]$NewVersion -ge [version]'0.12.37') { $reasons += @('BROWSER_EXIT_IP','ADAPTER_CREATE') }
+            foreach ($reason in $reasons) {
+                $proofs = if ([version]$NewVersion -ge [version]'0.12.37') { @(
+                    ('Session validation failure stays blocked during backoff: ' + $reason),
+                    ('Production coordinator retries saved-account validation without granting readiness: ' + $reason)
+                ) } else { @(
                     ('Endpoint route failure stays blocked during backoff: ' + $reason),
                     ('Production coordinator starts a new saved-account attempt after endpoint route loss, without granting readiness: ' + $reason)
-                )) {
-                    if (@($reconnectRows | Where-Object { $_.pass -eq $true -and $_.name -ceq $proof }).Count -ne 1) { throw 'Required endpoint-route recovery proof missing.' }
+                ) }
+                foreach ($proof in $proofs) {
+                    if (@($reconnectRows | Where-Object { $_.pass -eq $true -and $_.name -ceq $proof }).Count -ne 1) { throw ('Required reconnect recovery proof missing: ' + $reason) }
                 }
             }
         }
