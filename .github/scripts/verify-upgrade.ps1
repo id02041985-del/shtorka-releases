@@ -479,10 +479,10 @@ if ($drawerRelease) {
         # 0.12.27 adds named heartbeat/operation-lifetime assertions to the
         # installed overlay suite. Keep a strict exact count for this version;
         # all boolean, exit, timeout and named-proof gates remain mandatory.
-        # 0.12.38 adds five opt-in/logon/readiness assertions and two stale
-        # automatic activation guards. Preserve exact counts for older builds.
-        $overlayMinimum = if ([version]$NewVersion -ge [version]'0.12.38') { 129 } elseif ($compactRelease) { 122 } elseif ([version]$NewVersion -ge [version]'0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 40 }
-        $overlayMaximum = if ([version]$NewVersion -ge [version]'0.12.38') { 129 } elseif ($compactRelease) { 122 } elseif ([version]$NewVersion -ge [version]'0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 100 }
+        # 0.12.38 adds five opt-in/logon/readiness assertions, two stale
+        # activation guards and a late self-show visibility check. Keep older counts.
+        $overlayMinimum = if ([version]$NewVersion -ge [version]'0.12.38') { 130 } elseif ($compactRelease) { 122 } elseif ([version]$NewVersion -ge [version]'0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 40 }
+        $overlayMaximum = if ([version]$NewVersion -ge [version]'0.12.38') { 130 } elseif ($compactRelease) { 122 } elseif ([version]$NewVersion -ge [version]'0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 100 }
         Verify-InstalledRail '--verify-program-overlay' 'program-overlay.json' $overlayMinimum $overlayMaximum 600000 @(
             'A real click on the ordinary Programs action opens the existing application in the shared drawer',
             'Closing and reopening the drawer preserves the same modal Save dialog',
@@ -519,7 +519,8 @@ if ($drawerRelease) {
                 'Synthetic connection readiness cold-launches the real installed app in Drape once; reconnect does not relaunch',
                 'Reloaded startup state does not repeat activation in the same Windows logon',
                 'Disconnect and reconnect during automatic preparation cannot activate a stale launch',
-                'Disabling automatic launch during inspection prevents activation'
+                'Disabling automatic launch during inspection prevents activation',
+                'A hosted app revealing itself after a site switch is hidden again without losing its session'
             )) {
                 if (@($overlayReport | Where-Object { $_.pass -is [bool] -and $_.pass -eq $true -and $_.name -ceq $proof }).Count -ne 1) {
                     throw 'Required 0.12.38 Windows-logon autostart proof missing.'
