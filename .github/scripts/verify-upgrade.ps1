@@ -593,6 +593,9 @@ if ($drawerRelease) {
 } else {
     Verify-InstalledRail '--verify-program-operations' 'program-operations.json' 12 13
 }
+if ($Mode -eq 'candidate' -and [version]$NewVersion -ge [version]'0.12.39') {
+    Verify-InstalledRail '--verify-program-live-reconnect' 'program-live-reconnect.json' 11 11 600000
+}
 if (Test-Path -LiteralPath (Join-Path $profile 'error.log')) { throw 'Installed application logged a startup error.' }
 "Installed upgrade $OldVersion -> $NewVersion passed on public GitHub-hosted Windows runner. Candidate SHA256: $($new.Sha256). Source: $SourceSha" |
     Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
