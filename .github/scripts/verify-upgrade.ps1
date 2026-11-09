@@ -432,7 +432,15 @@ if ([version]$NewVersion -ge [version]'0.12.36') {
 }
 if ($Mode -eq 'candidate') {
     $env:SHTORKA_OBYEZD_TEST_PACKAGES = Split-Path $bridgeCrx -Parent
-    try { Verify-InstalledRail '--verify-obyezd-bridge' 'obyezd-bridge-checks.json' 4 }
+    try {
+        if ([version]$NewVersion -ge [version]'0.12.41') {
+            Verify-InstalledRail '--verify-obyezd-bridge' 'obyezd-bridge-checks.json' 5 5 600000 @(
+                'Subscription preparation restores the signed bridge after explicit extension disable without activating office or site routing'
+            )
+        } else {
+            Verify-InstalledRail '--verify-obyezd-bridge' 'obyezd-bridge-checks.json' 4
+        }
+    }
     finally { Remove-Item Env:SHTORKA_OBYEZD_TEST_PACKAGES -ErrorAction SilentlyContinue }
 }
 if ($Mode -eq 'candidate' -and [version]$NewVersion -ge [version]'0.12.26') {
