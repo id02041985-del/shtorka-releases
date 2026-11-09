@@ -483,8 +483,18 @@ if ($drawerRelease) {
         # activation guards and a late self-show visibility check. Keep older counts.
         $overlayMinimum = if ([version]$NewVersion -ge [version]'0.12.38') { 130 } elseif ($compactRelease) { 122 } elseif ([version]$NewVersion -ge [version]'0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 40 }
         $overlayMaximum = if ([version]$NewVersion -ge [version]'0.12.38') { 130 } elseif ($compactRelease) { 122 } elseif ([version]$NewVersion -ge [version]'0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 100 }
-        Verify-InstalledRail '--verify-program-overlay' 'program-overlay.json' $overlayMinimum $overlayMaximum 600000 @(
-            'A real click on the ordinary Programs action opens the existing application in the shared drawer',
+        # 0.12.40 moves the same launch operation from the card button to its context menu.
+        $programActionProof = if ([version]$NewVersion -ge [version]'0.12.40') {
+            'A real click on the Programs context menu opens the existing application in the shared drawer'
+        } else {
+            'A real click on the ordinary Programs action opens the existing application in the shared drawer'
+        }
+        $programCardProofs = if ([version]$NewVersion -ge [version]'0.12.40') {
+            @('Installed Programs card shows only the route selector and remove action',
+              'A native click pins the program beside sites and saves its setting')
+        }
+        Verify-InstalledRail '--verify-program-overlay' 'program-overlay.json' $overlayMinimum $overlayMaximum 600000 (@(
+            $programActionProof,
             'Closing and reopening the drawer preserves the same modal Save dialog',
             'Real input reaches the different-DPI program window in the shared drawer',
             'Transient native bounds rejection settles to the exact current drawer viewport before readiness',
@@ -497,7 +507,7 @@ if ($drawerRelease) {
             'Destroying the drawer owner restores the ordinary application window with unsaved text',
             'Installed ChatGPT MSIX restores its ordinary window without changing its account or network mode',
             'A native pin click reattaches ChatGPT with its own exact-window restoration receipt before the broker crash'
-        )
+        ) + @($programCardProofs | Where-Object { $_ }))
         if ([version]$NewVersion -ge [version]'0.12.27') {
             $overlayReport = Get-Content -LiteralPath (Join-Path $profile 'program-overlay.json') -Raw | ConvertFrom-Json
             foreach ($proof in @(
