@@ -433,7 +433,13 @@ if ([version]$NewVersion -ge [version]'0.12.36') {
 if ($Mode -eq 'candidate') {
     $env:SHTORKA_OBYEZD_TEST_PACKAGES = Split-Path $bridgeCrx -Parent
     try {
-        if ([version]$NewVersion -ge [version]'0.12.42') {
+        if ([version]$NewVersion -ge [version]'0.12.43') {
+            Verify-InstalledRail '--verify-obyezd-bridge' 'obyezd-bridge-checks.json' 7 7 600000 @(
+                'Subscription preparation restores the signed bridge after explicit extension disable without activating office or site routing',
+                'Office site policy switches to the protected subscription policy without enabling a direct route',
+                'Remembered subscription server round-trips through CurrentUser DPAPI and can be forgotten'
+            )
+        } elseif ([version]$NewVersion -ge [version]'0.12.42') {
             Verify-InstalledRail '--verify-obyezd-bridge' 'obyezd-bridge-checks.json' 6 6 600000 @(
                 'Subscription preparation restores the signed bridge after explicit extension disable without activating office or site routing',
                 'Office site policy switches to the protected subscription policy without enabling a direct route'
