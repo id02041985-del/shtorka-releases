@@ -433,7 +433,12 @@ if ([version]$NewVersion -ge [version]'0.12.36') {
 if ($Mode -eq 'candidate') {
     $env:SHTORKA_OBYEZD_TEST_PACKAGES = Split-Path $bridgeCrx -Parent
     try {
-        if ([version]$NewVersion -ge [version]'0.12.41') {
+        if ([version]$NewVersion -ge [version]'0.12.42') {
+            Verify-InstalledRail '--verify-obyezd-bridge' 'obyezd-bridge-checks.json' 6 6 600000 @(
+                'Subscription preparation restores the signed bridge after explicit extension disable without activating office or site routing',
+                'Office site policy switches to the protected subscription policy without enabling a direct route'
+            )
+        } elseif ([version]$NewVersion -ge [version]'0.12.41') {
             Verify-InstalledRail '--verify-obyezd-bridge' 'obyezd-bridge-checks.json' 5 5 600000 @(
                 'Subscription preparation restores the signed bridge after explicit extension disable without activating office or site routing'
             )
@@ -612,7 +617,15 @@ if ($drawerRelease) {
     Verify-InstalledRail '--verify-program-operations' 'program-operations.json' 12 13
 }
 if ($Mode -eq 'candidate' -and [version]$NewVersion -ge [version]'0.12.39') {
-    Verify-InstalledRail '--verify-program-live-reconnect' 'program-live-reconnect.json' 11 11 600000
+    if ([version]$NewVersion -ge [version]'0.12.42') {
+        Verify-InstalledRail '--verify-program-live-reconnect' 'program-live-reconnect.json' 14 14 600000 @(
+            'The protected launch wait returns the exact signed window for the same opening action',
+            'Live switch to subscription mode keeps the hidden signed window, process and restrictive firewall rule',
+            'Live switch back to office mode reopens the same signed window without a direct connection'
+        )
+    } else {
+        Verify-InstalledRail '--verify-program-live-reconnect' 'program-live-reconnect.json' 11 11 600000
+    }
 }
 if (Test-Path -LiteralPath (Join-Path $profile 'error.log')) { throw 'Installed application logged a startup error.' }
 "Installed upgrade $OldVersion -> $NewVersion passed on public GitHub-hosted Windows runner. Candidate SHA256: $($new.Sha256). Source: $SourceSha" |
