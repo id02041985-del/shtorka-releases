@@ -534,8 +534,10 @@ if ($drawerRelease) {
         # all boolean, exit, timeout and named-proof gates remain mandatory.
         # 0.12.38 adds five opt-in/logon/readiness assertions, two stale
         # activation guards and a late self-show visibility check. Keep older counts.
-        $overlayMinimum = if ([version]$NewVersion -ge [version]'0.12.38') { 130 } elseif ($compactRelease) { 122 } elseif ([version]$NewVersion -ge [version]'0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 40 }
-        $overlayMaximum = if ([version]$NewVersion -ge [version]'0.12.38') { 130 } elseif ($compactRelease) { 122 } elseif ([version]$NewVersion -ge [version]'0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 100 }
+        # 0.12.54 adds four real startup-HWND replacement assertions and the
+        # additional viewport's two shutdown checkpoints. Older counts stay exact.
+        $overlayMinimum = if ([version]$NewVersion -ge [version]'0.12.54') { 136 } elseif ([version]$NewVersion -ge [version]'0.12.38') { 130 } elseif ($compactRelease) { 122 } elseif ([version]$NewVersion -ge [version]'0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 40 }
+        $overlayMaximum = if ([version]$NewVersion -ge [version]'0.12.54') { 136 } elseif ([version]$NewVersion -ge [version]'0.12.38') { 130 } elseif ($compactRelease) { 122 } elseif ([version]$NewVersion -ge [version]'0.12.28') { 118 } elseif ($NewVersion -ceq '0.12.27') { 113 } else { 100 }
         # 0.12.40 moves the same launch operation from the card button to its context menu.
         $programActionProof = if ([version]$NewVersion -ge [version]'0.12.40') {
             'A real click on the Programs context menu opens the existing application in the shared drawer'
@@ -587,6 +589,18 @@ if ($drawerRelease) {
             )) {
                 if (@($overlayReport | Where-Object { $_.pass -is [bool] -and $_.pass -eq $true -and $_.name -ceq $proof }).Count -ne 1) {
                     throw 'Required 0.12.38 Windows-logon autostart proof missing.'
+                }
+            }
+        }
+        if ([version]$NewVersion -ge [version]'0.12.54') {
+            foreach ($proof in @(
+                'One captured placement follows a destroyed startup HWND in the same live process',
+                'Replacement HWND is Ready and exactly fits the current drawer without a second user request',
+                'Real startup replacement records TARGET_EXITED before old Ready and new Ready afterward',
+                'Replacement detaches normally with its own frame restored and process preserved'
+            )) {
+                if (@($overlayReport | Where-Object { $_.pass -is [bool] -and $_.pass -eq $true -and $_.name -ceq $proof }).Count -ne 1) {
+                    throw 'Required 0.12.54 real startup HWND replacement proof missing.'
                 }
             }
         }
