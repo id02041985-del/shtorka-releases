@@ -1,4 +1,4 @@
-﻿param(
+param(
     [ValidateSet('rehearsal','candidate')][string]$Mode,
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$OldVersion,
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$NewVersion,
@@ -125,6 +125,20 @@ $registered = Get-ItemProperty -LiteralPath $key
 $appDir = $registered.InstallLocation.TrimEnd('\')
 $exe = Join-Path $appDir 'Shtorka.exe'
 if (!(Test-Path -LiteralPath $exe) -or [Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion -notlike "$OldVersion*") { throw 'Previous version was not installed.' }
+# Exercise real removal, not just a new install that never had OpenConnect.
+# Only this disposable runner's SID is used; no subscription or VPN is started.
+$retirementCheck = [version]$OldVersion -lt [version]'0.12.51' -and [version]$NewVersion -ge [version]'0.12.51'
+if ($retirementCheck) {
+    $ownerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $legacyRoot = Join-Path $env:ProgramFiles "ShtorkaOffice\$ownerSid"
+    $legacyService = 'Shtorka.Obyezd.' + [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::ASCII.GetBytes($ownerSid))).Substring(0,24)
+    if (Test-Path -LiteralPath $legacyRoot) { throw 'Legacy fixture root must not exist before disposable setup.' }
+    $legacyInstaller = Join-Path $appDir 'OfficeComponentSetup.exe'
+    if (!(Test-Path -LiteralPath $legacyInstaller)) { throw 'Verified old installer is missing its legacy fixture.' }
+    $legacyProcess = Start-Process -FilePath $legacyInstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/OWNER=$ownerSid",('/CLIENT="' + $exe + '"')) -PassThru -WindowStyle Hidden
+    if (!$legacyProcess.WaitForExit(180000) -or $legacyProcess.ExitCode -ne 0) { throw 'Disposable old component installation failed.' }
+    if (!(Test-Path -LiteralPath (Join-Path $legacyRoot 'unins000.exe')) -or !(Get-Service -Name $legacyService -ErrorAction SilentlyContinue)) { throw 'Old component fixture was not installed.' }
+}
 $profile = Join-Path $env:LOCALAPPDATA 'Shtorka'
 New-Item -ItemType Directory -Path $profile -Force | Out-Null
 $sentinel = Join-Path $profile 'upgrade-sentinel.txt'
@@ -164,6 +178,12 @@ $updated = Get-ItemProperty -LiteralPath $key
 if ($updated.DisplayName -cne "Drape $NewVersion" -or $updated.InstallLocation.TrimEnd('\') -ine $appDir) { throw 'Upgrade changed app identity or directory.' }
 $version = [Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
 if ($version.ProductVersion -notlike "$NewVersion*" -or $version.ProductName -cne 'Drape') { throw 'Installed candidate version or brand mismatch.' }
+if ([version]$NewVersion -ge [version]'0.12.51') {
+    $forbidden = @(Get-ChildItem -LiteralPath $appDir -File -Recurse | Where-Object { $_.Name -in @('OfficeComponentSetup.exe','openconnect.exe','Shtorka.Office.exe','Shtorka.Obyezd.Service.exe') })
+    if ($forbidden.Count) { throw 'Ordinary update retained a retired transport payload.' }
+    if ($retirementCheck -and ((Test-Path -LiteralPath (Join-Path $legacyRoot 'Shtorka.Office.exe')) -or (Get-Service -Name $legacyService -ErrorAction SilentlyContinue))) { throw 'Upgrade did not remove the owned old component and service.' }
+    Write-Host 'Retired transport payload and owned legacy service: absent.'
+}
 if ((Get-Content -LiteralPath $sentinel -Raw) -cne 'disposable upgrade sentinel') { throw 'Application profile changed.' }
 if ((Get-ItemProperty -LiteralPath $runKey -Name 'Drape' -ErrorAction SilentlyContinue).Drape -cne ('"' + $exe + '"') -or
     (Get-ItemProperty -LiteralPath $runKey -Name 'Shtorka' -ErrorAction SilentlyContinue)) { throw 'Autostart migration failed.' }
@@ -636,4 +656,5 @@ if ($Mode -eq 'candidate' -and [version]$NewVersion -ge [version]'0.12.39') {
 if (Test-Path -LiteralPath (Join-Path $profile 'error.log')) { throw 'Installed application logged a startup error.' }
 "Installed upgrade $OldVersion -> $NewVersion passed on public GitHub-hosted Windows runner. Candidate SHA256: $($new.Sha256). Source: $SourceSha" |
     Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
 
