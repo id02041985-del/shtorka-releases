@@ -646,7 +646,14 @@ if ($drawerRelease) {
     Verify-InstalledRail '--verify-program-operations' 'program-operations.json' 12 13
 }
 if ($Mode -eq 'candidate' -and [version]$NewVersion -ge [version]'0.12.39') {
-    if ([version]$NewVersion -ge [version]'0.12.42') {
+    if ([version]$NewVersion -ge [version]'0.12.52') {
+        Verify-InstalledRail '--verify-program-live-reconnect' 'program-live-reconnect.json' 15 15 600000 @(
+            'The protected launch wait returns the exact signed window for the same opening action',
+            'Live switch to subscription mode keeps the hidden signed window, process and restrictive firewall rule',
+            'Live switch to business subscription preserves the exact signed process, HWND and fail-closed Windows rule',
+            'Live switch back to office mode reopens the same signed window without a direct connection'
+        )
+    } elseif ([version]$NewVersion -ge [version]'0.12.42') {
         Verify-InstalledRail '--verify-program-live-reconnect' 'program-live-reconnect.json' 14 14 600000 @(
             'The protected launch wait returns the exact signed window for the same opening action',
             'Live switch to subscription mode keeps the hidden signed window, process and restrictive firewall rule',
