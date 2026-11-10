@@ -663,6 +663,29 @@ if ($Mode -eq 'candidate' -and [version]$NewVersion -ge [version]'0.12.39') {
         Verify-InstalledRail '--verify-program-live-reconnect' 'program-live-reconnect.json' 11 11 600000
     }
 }
+if ($Mode -eq 'candidate' -and [version]$NewVersion -ge [version]'0.12.53') {
+    $runtime = Join-Path $appDir 'BusinessRuntime'
+    if (!(Test-Path -LiteralPath (Join-Path $runtime 'LICENSE')) -or !(Test-Path -LiteralPath (Join-Path $runtime 'NOTICE.txt')) -or
+        (Get-FileHash -LiteralPath (Join-Path $runtime 'xray.exe') -Algorithm SHA256).Hash -cne '1CA7A2CF61BA2C5D20B21A80D405B57933939751081CB289F07BD8DDF7CC3185') {
+        throw 'Installed corporate REALITY runtime or license missing or changed.'
+    }
+    $realityReport = Join-Path $work 'business-reality.json'
+    $realityProcess = Start-Process -FilePath $exe -WorkingDirectory $appDir -ArgumentList @('--verify-business-reality', ('"' + $realityReport + '"')) -PassThru -WindowStyle Hidden
+    if (!$realityProcess.WaitForExit(240000)) { $realityProcess.Kill(); throw 'Installed REALITY acceptance timed out.' }
+    $realityProcess.Refresh()
+    if ($realityProcess.ExitCode -ne 0 -or !(Test-Path -LiteralPath $realityReport)) { throw 'Installed REALITY acceptance failed.' }
+    $reality = Get-Content -LiteralPath $realityReport -Raw | ConvertFrom-Json
+    if ($reality.engine -cne '26.11.9' -or @($reality.checks).Count -ne 15 -or @($reality.checks | Where-Object { $_.pass -ne $true }).Count -ne 0) {
+        throw 'Installed REALITY receipt is incomplete.'
+    }
+    foreach ($required in @('personal REALITY retains sing-box', 'REALITY authenticates and confirms owned proxy route',
+        'active ping preserves open stream', 'outage blocks access to reachable canary instead of direct fallback',
+        'route recovers after peer restart', 'reconnect preserves ingress ports')) {
+        if (@($reality.checks | Where-Object { $_.name -ceq $required -and $_.pass -eq $true }).Count -ne 1) { throw 'Required installed REALITY proof missing.' }
+    }
+    'Installed bundled Xray: 15 local REALITY authentication, outage, recovery and stream preservation checks passed. Provider credentials are not used in this fixture.' |
+        Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+}
 if (Test-Path -LiteralPath (Join-Path $profile 'error.log')) { throw 'Installed application logged a startup error.' }
 "Installed upgrade $OldVersion -> $NewVersion passed on public GitHub-hosted Windows runner. Candidate SHA256: $($new.Sha256). Source: $SourceSha" |
     Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
