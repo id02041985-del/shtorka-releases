@@ -77,11 +77,16 @@ jobs:
           # upload-artifact cannot find a common root across the C: and D: drives.
           foreach ($pattern in @('obyezd-refresh*.json', 'obyezd-popup-windows.png',
               'main-frame-*.json', 'main-frame-*.png', 'program-overlay.json',
-              'program-bounds-observation.json', 'program-msix-restore-observation.json')) {
+              'program-bounds-observation.json', 'program-msix-restore-observation.json',
+              'program-live-reconnect.json')) {
             if (Test-Path -LiteralPath $profile) {
               Get-ChildItem -LiteralPath $profile -Filter $pattern -File |
                 Copy-Item -Destination $evidence
             }
+          }
+          $realityReport = Join-Path $env:RUNNER_TEMP 'drape-upgrade/business-reality.json'
+          if (Test-Path -LiteralPath $realityReport) {
+            Copy-Item -LiteralPath $realityReport -Destination $evidence
           }
           $viewportIndex = 0
           foreach ($directory in @(Get-ChildItem -LiteralPath $profile -Directory -Filter 'viewport-*' -ErrorAction SilentlyContinue |

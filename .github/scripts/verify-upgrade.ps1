@@ -306,6 +306,17 @@ function Verify-InstalledRail([string]$argument,[string]$reportName,[int]$expect
                 & (Join-Path $PSScriptRoot 'diagnose-panel-exit.ps1') -Panel $process -ExpectedExe $exe -ReportPath $report
             }
             $reason = if ($failed.Count -ne 0) { [string]$failed[0].name } else { "Expected $expectedChecks..$maximumChecks checks, got $($results.Count)" }
+            if ($argument -ceq '--verify-program-live-reconnect' -and $reason -ceq 'Live coordinator failure') {
+                # This fixture has no account credentials. Keep console fields
+                # bounded; retain its full synthetic receipt in the allowlist.
+                $failureType = [string]$failed[0].type
+                if ($failureType -cmatch '^[A-Za-z0-9_]{1,100}$') { Write-Host "Live reconnect exception type: $failureType" }
+                $failureCode = 0
+                if ([int]::TryParse([string]$failed[0].hresult, [ref]$failureCode)) { Write-Host "Live reconnect HRESULT: $failureCode" }
+                foreach ($site in @($failed[0].callSites | Select-Object -First 12)) {
+                    if ([string]$site -cmatch '^[A-Za-z0-9_.+<>`]{1,240}$') { Write-Host "Live reconnect call: $site" }
+                }
+            }
             if ($reason -ceq 'Exception' -or !$completed) {
                 # Cleanup checkpoints follow an exception; report the operation
                 # immediately before the FIRST failure rather than masking it.
