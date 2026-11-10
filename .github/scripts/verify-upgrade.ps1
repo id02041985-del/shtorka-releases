@@ -1,4 +1,4 @@
-param(
+﻿param(
     [ValidateSet('rehearsal','candidate')][string]$Mode,
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$OldVersion,
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$NewVersion,
@@ -131,7 +131,10 @@ $retirementCheck = [version]$OldVersion -lt [version]'0.12.51' -and [version]$Ne
 if ($retirementCheck) {
     $ownerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     $legacyRoot = Join-Path $env:ProgramFiles "ShtorkaOffice\$ownerSid"
-    $legacyService = 'Shtorka.Obyezd.' + [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::ASCII.GetBytes($ownerSid))).Substring(0,24)
+    $ownerHasher = [Security.Cryptography.SHA256]::Create()
+    try { $ownerHash = [BitConverter]::ToString($ownerHasher.ComputeHash([Text.Encoding]::ASCII.GetBytes($ownerSid))).Replace('-', '') }
+    finally { $ownerHasher.Dispose() }
+    $legacyService = 'Shtorka.Obyezd.' + $ownerHash.Substring(0,24)
     if (Test-Path -LiteralPath $legacyRoot) { throw 'Legacy fixture root must not exist before disposable setup.' }
     $legacyInstaller = Join-Path $appDir 'OfficeComponentSetup.exe'
     if (!(Test-Path -LiteralPath $legacyInstaller)) { throw 'Verified old installer is missing its legacy fixture.' }
