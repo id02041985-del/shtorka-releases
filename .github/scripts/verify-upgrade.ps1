@@ -671,7 +671,25 @@ if ($drawerRelease) {
     Verify-InstalledRail '--verify-program-operations' 'program-operations.json' 12 13
 }
 if ($Mode -eq 'candidate' -and [version]$NewVersion -ge [version]'0.12.39') {
-    if ([version]$NewVersion -ge [version]'0.12.52') {
+    if ([version]$NewVersion -ge [version]'0.12.55') {
+        Verify-InstalledRail '--verify-program-live-reconnect' 'program-live-reconnect.json' 26 26 600000 @(
+            'The protected launch wait returns the exact signed window for the same opening action',
+            'Live switch to subscription mode keeps the hidden signed window, process and restrictive firewall rule',
+            'Live switch to business subscription preserves the exact signed process, HWND and fail-closed Windows rule',
+            'Live switch back to office mode reopens the same signed window without a direct connection',
+            'Missing observer preserves the remembered proxy identity but provides no protection proof',
+            'Unknown ingress ownership denies observer recovery without rebind, process restart or green status',
+            'Injected first placement failure preserves the running session and proxy hint without claiming an observer',
+            'Observer recovery freshly verifies Windows, existing relays and TCP without reconfiguring the endpoint',
+            'Recovered observer preserves exact signed process and drawer HWND with no external TCP',
+            'Repeated observer recovery reuses an attached observer without duplicate preparation',
+            'Injected Windows readback failure survives reopen without replacement or false protection status',
+            'Injected Relay readback failure survives reopen without replacement or false protection status',
+            'Injected Connections readback failure survives reopen without replacement or false protection status',
+            'Expired observation cannot become fresh merely by reopening the window',
+            'The retained observer recovers through real readback after injected failures without resetting the endpoint or process'
+        )
+    } elseif ([version]$NewVersion -ge [version]'0.12.52') {
         Verify-InstalledRail '--verify-program-live-reconnect' 'program-live-reconnect.json' 15 15 600000 @(
             'The protected launch wait returns the exact signed window for the same opening action',
             'Live switch to subscription mode keeps the hidden signed window, process and restrictive firewall rule',
